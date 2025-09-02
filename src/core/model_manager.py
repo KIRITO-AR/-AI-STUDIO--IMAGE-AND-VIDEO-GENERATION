@@ -34,7 +34,6 @@ try:
     from diffusers.schedulers.scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler  # type: ignore
     DIFFUSERS_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Diffusers import failed: {e}")
     DIFFUSERS_AVAILABLE = False
     # Create dummy classes to prevent errors
     class DummyPipeline:

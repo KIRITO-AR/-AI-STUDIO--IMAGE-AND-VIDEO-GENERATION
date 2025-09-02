@@ -290,12 +290,25 @@ class GPUDetector:
                 'enable_cpu_offload': True,
                 'use_attention_slicing': True
             }
-        else:  # Lower end
+        elif memory_gb >= 4:   # GTX 1650, GTX 1660, etc. (4GB cards)
             return {
                 'batch_size': 1,
                 'max_resolution': 512,
                 'enable_cpu_offload': True,
-                'use_attention_slicing': True
+                'use_attention_slicing': True,
+                'enable_sequential_cpu_offload': True,
+                'enable_vae_slicing': True,
+                'enable_vae_tiling': True
+            }
+        else:  # Lower end (< 4GB)
+            return {
+                'batch_size': 1,
+                'max_resolution': 256,
+                'enable_cpu_offload': True,
+                'use_attention_slicing': True,
+                'enable_sequential_cpu_offload': True,
+                'enable_vae_slicing': True,
+                'enable_vae_tiling': True
             }
     
     def get_optimization_settings(self) -> Dict[str, bool]:
@@ -330,6 +343,11 @@ class GPUDetector:
         if best_gpu and best_gpu.memory_total < 8000:  # Less than 8GB
             settings['enable_sequential_cpu_offload'] = True
             logger.info("Enabling CPU offloading due to limited GPU memory")
+            
+        # Enable model CPU offloading for 4GB cards like GTX 1650
+        if best_gpu and best_gpu.memory_total <= 4096:  # 4GB or less
+            settings['enable_model_cpu_offload'] = True
+            logger.info("Enabling model CPU offloading for 4GB GPU")
         
         return settings
 
@@ -443,7 +461,10 @@ def optimize_torch_settings(detector: GPUDetector):
         if detector.cuda_available:
             # Use memory fraction if GPU memory is limited
             best_gpu = detector.get_best_gpu()
-            if best_gpu and best_gpu.memory_total < 8000:
+            if best_gpu and best_gpu.memory_total <= 4096:  # 4GB cards like GTX 1650
+                os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:256,expandable_segments:True'
+                logger.info("Applied aggressive memory optimization for 4GB GPU")
+            elif best_gpu and best_gpu.memory_total < 8000:
                 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
         
         logger.info("PyTorch optimization settings applied")

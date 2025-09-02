@@ -151,13 +151,22 @@ class GenerationEngine:
         if self.status_callback:
             self.status_callback(status)
     
-    def _progress_callback_wrapper(self, pipe, step: int, timestep: float, latents: torch.FloatTensor):
-        """Wrapper for diffusion pipeline progress callback."""
+    def _progress_callback_wrapper(self, step: int, timestep: float, latents: torch.FloatTensor):
+        """Wrapper for diffusion pipeline progress callback (3-parameter version)."""
         if self.progress_callback:
-            # Calculate progress percentage
-            total_steps = pipe.num_timesteps if hasattr(pipe, 'num_timesteps') else 20
+            # For backward compatibility, assume 20 steps if we can't determine total
+            total_steps = 20  # Default fallback
             progress = (step + 1) / total_steps
             self.progress_callback(step + 1, total_steps, progress)
+    
+    def _step_end_callback(self, pipe, step: int, timestep: float, callback_kwargs: dict):
+        """Modern callback for diffusers callback_on_step_end."""
+        if self.progress_callback:
+            # Get total steps from the pipeline
+            total_steps = getattr(pipe, 'num_timesteps', 20)
+            progress = (step + 1) / total_steps
+            self.progress_callback(step + 1, total_steps, progress)
+        return callback_kwargs
     
     def generate_image(self, params: GenerationParams) -> GenerationResult:
         """Generate images from text prompt."""
@@ -209,8 +218,8 @@ class GenerationEngine:
                 "guidance_scale": params.guidance_scale,
                 "num_images_per_prompt": params.num_images_per_prompt,
                 "generator": generator,
-                "callback": self._progress_callback_wrapper,
-                "callback_steps": 1
+                "callback_on_step_end": self._step_end_callback,
+                "callback_on_step_end_tensor_inputs": ['latents']
             }
             
             # Handle SDXL-specific parameters
@@ -315,8 +324,8 @@ class GenerationEngine:
                 "num_inference_steps": params.num_inference_steps,
                 "guidance_scale": params.guidance_scale,
                 "generator": generator,
-                "callback": self._progress_callback_wrapper,
-                "callback_steps": 1
+                "callback_on_step_end": self._step_end_callback,
+                "callback_on_step_end_tensor_inputs": ['latents']
             }
             
             # Generate video

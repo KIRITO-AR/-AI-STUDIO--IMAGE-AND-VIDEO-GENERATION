@@ -1,7 +1,4 @@
-"""
-Model management for AI Generation Studio.
-Handles loading, caching, and switching between different AI models.
-"""
+
 
 import os
 import logging

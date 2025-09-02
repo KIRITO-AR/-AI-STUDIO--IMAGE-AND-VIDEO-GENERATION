@@ -18,6 +18,10 @@ except ImportError:
     TORCH_AVAILABLE = False
     torch = None
 
+# Disable ONNX runtime to avoid DLL loading issues on Windows
+import os
+os.environ['DIFFUSERS_DISABLE_ONNX'] = '1'
+
 try:
     from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline  # type: ignore
     from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline  # type: ignore
@@ -29,7 +33,8 @@ try:
     from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteScheduler  # type: ignore
     from diffusers.schedulers.scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler  # type: ignore
     DIFFUSERS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    logger.warning(f"Diffusers import failed: {e}")
     DIFFUSERS_AVAILABLE = False
     # Create dummy classes to prevent errors
     class DummyPipeline:
@@ -384,6 +389,15 @@ class ModelManager:
             # Model-specific pipeline creation
             if not DIFFUSERS_AVAILABLE:
                 raise RuntimeError("Diffusers not available")
+            
+            # Set environment variable to disable ONNX to avoid DLL issues
+            os.environ['DISABLE_ONNX'] = '1'
+            
+            # Add extra kwargs to prevent ONNX usage
+            kwargs.update({
+                'use_onnx': False,
+                'provider': None  # Disable ONNX provider
+            })
                 
             if model_info.model_type == ModelType.STABLE_DIFFUSION_XL:
                 # Use the imported class directly - type checker knows it's real when DIFFUSERS_AVAILABLE is True
@@ -420,7 +434,16 @@ class ModelManager:
             return pipeline
             
         except Exception as e:
-            logger.error(f"Failed to create pipeline: {e}")
+            # Check if this is an ONNX-related error
+            error_str = str(e).lower()
+            if 'onnx' in error_str or 'dll' in error_str:
+                logger.error(f"ONNX runtime error detected. This is usually due to missing Visual C++ redistributables on Windows.")
+                logger.error(f"To fix this issue, either:")
+                logger.error(f"1. Install Microsoft Visual C++ Redistributable (recommended)")
+                logger.error(f"2. Or uninstall onnxruntime: pip uninstall onnxruntime onnxruntime-gpu")
+                logger.error(f"Original error: {e}")
+            else:
+                logger.error(f"Failed to create pipeline: {e}")
             return None
     
     def _create_animatediff_pipeline(self, model_info: ModelInfo, dtype, **kwargs):

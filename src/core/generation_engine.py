@@ -34,20 +34,26 @@ if __name__ != '__main__':
 from .model_manager import get_model_manager, ModelType
 
 try:
-    from utils.gpu_utils import PerformanceMonitor, clear_gpu_cache
+    from utils.gpu_utils import PerformanceMonitor
     from utils.config import get_config
 except ImportError:
     # Fallback for relative imports
     try:
-        from ..utils.gpu_utils import PerformanceMonitor, clear_gpu_cache
+        from ..utils.gpu_utils import PerformanceMonitor
         from ..utils.config import get_config
     except ImportError:
         # Last resort - direct path import
         current_dir = Path(__file__).resolve().parent
         utils_dir = current_dir.parent / 'utils'
         sys.path.insert(0, str(utils_dir.parent))
-        from utils.gpu_utils import PerformanceMonitor, clear_gpu_cache
+        from utils.gpu_utils import PerformanceMonitor
         from utils.config import get_config
+
+def clear_gpu_cache():
+    """Clear GPU cache if available."""
+    if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
 
 logger = logging.getLogger(__name__)
 
@@ -196,13 +202,13 @@ class GenerationEngine:
             generator = None
             seed_used = params.seed
             if seed_used is None:
-                if TORCH_AVAILABLE:
+                if TORCH_AVAILABLE and torch is not None:
                     seed_used = int(torch.randint(0, 2**32 - 1, (1,)).item())
                 else:
                     import random
                     seed_used = random.randint(0, 2**32 - 1)
             
-            if TORCH_AVAILABLE:
+            if TORCH_AVAILABLE and torch is not None:
                 generator = torch.Generator(device=self.model_manager.device)
                 generator.manual_seed(int(seed_used))
             
@@ -231,7 +237,7 @@ class GenerationEngine:
             
             # Generate images
             self._update_status("Generating images...")
-            if TORCH_AVAILABLE:
+            if TORCH_AVAILABLE and torch is not None:
                 with torch.inference_mode():
                     if pipeline is None:
                         raise RuntimeError("Pipeline not available")
@@ -302,13 +308,13 @@ class GenerationEngine:
             generator = None
             seed_used = params.seed
             if seed_used is None:
-                if TORCH_AVAILABLE:
+                if TORCH_AVAILABLE and torch is not None:
                     seed_used = int(torch.randint(0, 2**32 - 1, (1,)).item())
                 else:
                     import random
                     seed_used = random.randint(0, 2**32 - 1)
             
-            if TORCH_AVAILABLE:
+            if TORCH_AVAILABLE and torch is not None:
                 generator = torch.Generator(device=self.model_manager.device)
                 generator.manual_seed(int(seed_used))
             
@@ -330,7 +336,7 @@ class GenerationEngine:
             
             # Generate video
             self._update_status("Generating video frames...")
-            if TORCH_AVAILABLE:
+            if TORCH_AVAILABLE and torch is not None:
                 with torch.inference_mode():
                     if pipeline is None:
                         raise RuntimeError("Pipeline not available")

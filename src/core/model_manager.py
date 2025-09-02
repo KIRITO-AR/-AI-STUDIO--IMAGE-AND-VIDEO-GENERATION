@@ -22,32 +22,33 @@ except ImportError:
     torch = None
 
 try:
-    from diffusers import (
-        StableDiffusionPipeline,
-        StableDiffusionXLPipeline,
-        DiffusionPipeline,
-        AutoencoderKL,
-        DDIMScheduler,
-        DDPMScheduler,
-        EulerAncestralDiscreteScheduler,
-        EulerDiscreteScheduler,
-        DPMSolverMultistepScheduler
-    )
+    from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline  # type: ignore
+    from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import StableDiffusionXLPipeline  # type: ignore
+    from diffusers.pipelines.pipeline_utils import DiffusionPipeline  # type: ignore
+    from diffusers.models.autoencoders.autoencoder_kl import AutoencoderKL  # type: ignore
+    from diffusers.schedulers.scheduling_ddim import DDIMScheduler  # type: ignore
+    from diffusers.schedulers.scheduling_ddpm import DDPMScheduler  # type: ignore
+    from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler  # type: ignore
+    from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteScheduler  # type: ignore
+    from diffusers.schedulers.scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler  # type: ignore
     DIFFUSERS_AVAILABLE = True
 except ImportError:
     DIFFUSERS_AVAILABLE = False
     # Create dummy classes to prevent errors
     class DummyPipeline:
-        pass
-    StableDiffusionPipeline = DummyPipeline
-    StableDiffusionXLPipeline = DummyPipeline
-    DiffusionPipeline = DummyPipeline
-    AutoencoderKL = DummyPipeline
-    DDIMScheduler = DummyPipeline
-    DDPMScheduler = DummyPipeline
-    EulerAncestralDiscreteScheduler = DummyPipeline
-    EulerDiscreteScheduler = DummyPipeline
-    DPMSolverMultistepScheduler = DummyPipeline
+        @classmethod
+        def from_pretrained(cls, *args, **kwargs):
+            raise RuntimeError("Diffusers not available")
+    
+    StableDiffusionPipeline = DummyPipeline  # type: ignore
+    StableDiffusionXLPipeline = DummyPipeline  # type: ignore
+    DiffusionPipeline = DummyPipeline  # type: ignore
+    AutoencoderKL = DummyPipeline  # type: ignore
+    DDIMScheduler = DummyPipeline  # type: ignore
+    DDPMScheduler = DummyPipeline  # type: ignore
+    EulerAncestralDiscreteScheduler = DummyPipeline  # type: ignore
+    EulerDiscreteScheduler = DummyPipeline  # type: ignore
+    DPMSolverMultistepScheduler = DummyPipeline  # type: ignore
 
 try:
     from transformers import CLIPTextModel, CLIPTokenizer
@@ -69,20 +70,33 @@ if __name__ != '__main__':
         sys.path.insert(0, str(src_dir))
 
 try:
-    from utils.gpu_utils import get_device_info, clear_gpu_cache, optimize_torch_settings
+    from utils.gpu_utils import get_device_info, PerformanceMonitor
     from utils.config import get_config
 except ImportError:
     # Fallback for relative imports
     try:
-        from ..utils.gpu_utils import get_device_info, clear_gpu_cache, optimize_torch_settings
+        from ..utils.gpu_utils import get_device_info, PerformanceMonitor
         from ..utils.config import get_config
     except ImportError:
         # Last resort - direct path import
         current_dir = Path(__file__).resolve().parent
         utils_dir = current_dir.parent / 'utils'
         sys.path.insert(0, str(utils_dir.parent))
-        from utils.gpu_utils import get_device_info, clear_gpu_cache, optimize_torch_settings
+        from utils.gpu_utils import get_device_info, PerformanceMonitor
         from utils.config import get_config
+
+def clear_gpu_cache():
+    """Clear GPU cache if available."""
+    if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+
+def optimize_torch_settings(gpu_detector):
+    """Optimize PyTorch settings based on GPU capabilities."""
+    if TORCH_AVAILABLE and torch is not None:
+        # Enable optimizations if available
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.enabled = True
 
 logger = logging.getLogger(__name__)
 
@@ -365,11 +379,18 @@ class ModelManager:
         try:
             # Get device and dtype
             device = self.device
-            dtype = torch.float16 if device != "cpu" else torch.float32
+            if TORCH_AVAILABLE and torch is not None:
+                dtype = torch.float16 if device != "cpu" else torch.float32
+            else:
+                raise RuntimeError("PyTorch not available")
             
             # Model-specific pipeline creation
+            if not DIFFUSERS_AVAILABLE:
+                raise RuntimeError("Diffusers not available")
+                
             if model_info.model_type == ModelType.STABLE_DIFFUSION_XL:
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
+                # Use the imported class directly - type checker knows it's real when DIFFUSERS_AVAILABLE is True
+                pipeline = StableDiffusionXLPipeline.from_pretrained(  # type: ignore
                     model_info.model_id,
                     torch_dtype=dtype,
                     safety_checker=None,
@@ -381,7 +402,7 @@ class ModelManager:
                 pipeline = self._create_animatediff_pipeline(model_info, dtype, **kwargs)
             else:
                 # Standard Stable Diffusion
-                pipeline = StableDiffusionPipeline.from_pretrained(
+                pipeline = StableDiffusionPipeline.from_pretrained(  # type: ignore
                     model_info.model_id,
                     torch_dtype=dtype,
                     safety_checker=None,
@@ -410,7 +431,7 @@ class ModelManager:
         try:
             # This is a simplified version - actual AnimateDiff integration would be more complex
             try:
-                from diffusers import AnimateDiffPipeline
+                from diffusers.pipelines.animatediff.pipeline_animatediff import AnimateDiffPipeline  # type: ignore
             except ImportError:
                 logger.error("AnimateDiff not available. Install with: pip install animatediff")
                 return None
@@ -479,7 +500,7 @@ class ModelManager:
             # Compile model if supported (PyTorch 2.0+)
             if opt_settings.get('use_torch_compile', False):
                 try:
-                    if hasattr(torch, 'compile'):
+                    if TORCH_AVAILABLE and torch is not None and hasattr(torch, 'compile'):
                         pipeline.unet = torch.compile(pipeline.unet)
                         logger.info("Model compiled with torch.compile")
                 except:

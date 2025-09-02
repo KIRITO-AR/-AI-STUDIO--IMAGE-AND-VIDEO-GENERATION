@@ -205,4 +205,4 @@ This system is designed to be:
 
 ---
 
-*Built with ❤️ using PyTorch, Diffusers, Streamlit, and modern Python practices*
+*Built with  using PyTorch, Diffusers, Streamlit, and modern Python practices*

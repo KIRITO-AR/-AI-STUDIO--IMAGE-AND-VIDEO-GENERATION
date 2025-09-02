@@ -17,7 +17,7 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
-    torch = None
+    torch = None  # type: ignore
 
 # Try to import pynvml for NVIDIA GPU monitoring
 try:
@@ -25,7 +25,7 @@ try:
     PYNVML_AVAILABLE = True
 except ImportError:
     PYNVML_AVAILABLE = False
-    pynvml = None
+    pynvml = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class GPUDetector:
         
     def _check_cuda(self) -> bool:
         """Check if CUDA is available."""
-        if not TORCH_AVAILABLE:
+        if not TORCH_AVAILABLE or torch is None:
             logger.warning("PyTorch not installed, CUDA detection skipped")
             return False
         
@@ -73,11 +73,14 @@ class GPUDetector:
     
     def _check_rocm(self) -> bool:
         """Check if ROCm is available (AMD GPUs)."""
-        if not TORCH_AVAILABLE:
+        if not TORCH_AVAILABLE or torch is None:
             return False
         
         try:
-            return hasattr(torch.version, 'hip') and torch.version.hip is not None
+            # Check for ROCm/HIP support
+            return (hasattr(torch, 'version') and 
+                   hasattr(torch.version, 'hip') and  # type: ignore
+                   torch.version.hip is not None)  # type: ignore
         except (AttributeError, Exception):
             return False
     
@@ -100,7 +103,7 @@ class GPUDetector:
         """Detect NVIDIA GPUs using pynvml."""
         gpus = []
         
-        if not PYNVML_AVAILABLE:
+        if not PYNVML_AVAILABLE or pynvml is None:
             logger.warning("pynvml not available, using torch for basic CUDA detection")
             return self._detect_nvidia_gpus_fallback()
         
@@ -113,31 +116,33 @@ class GPUDetector:
                 handle = pynvml.nvmlDeviceGetHandleByIndex(i)
                 
                 # Get basic info
-                name = pynvml.nvmlDeviceGetName(handle).decode('utf-8')
+                name_bytes = pynvml.nvmlDeviceGetName(handle)
+                name = name_bytes.decode('utf-8') if isinstance(name_bytes, bytes) else str(name_bytes)
                 
                 # Get memory info
                 memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                memory_total = memory_info.total // (1024 * 1024)  # Convert to MB
-                memory_free = memory_info.free // (1024 * 1024)
-                memory_used = memory_info.used // (1024 * 1024)
+                memory_total = int(memory_info.total) // (1024 * 1024)  # Convert to MB
+                memory_free = int(memory_info.free) // (1024 * 1024)
+                memory_used = int(memory_info.used) // (1024 * 1024)
                 
                 # Get utilization
                 try:
                     util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                    utilization = util.gpu
-                except:
+                    utilization = float(util.gpu)
+                except Exception:
                     utilization = 0.0
                 
                 # Get temperature
                 try:
-                    temperature = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-                except:
+                    temperature = float(pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU))
+                except Exception:
                     temperature = None
                 
                 # Get driver version
                 try:
-                    driver_version = pynvml.nvmlSystemGetDriverVersion().decode('utf-8')
-                except:
+                    driver_bytes = pynvml.nvmlSystemGetDriverVersion()
+                    driver_version = driver_bytes.decode('utf-8') if isinstance(driver_bytes, bytes) else str(driver_bytes)
+                except Exception:
                     driver_version = None
                 
                 gpu_info = GPUInfo(
@@ -164,7 +169,7 @@ class GPUDetector:
         """Fallback GPU detection using torch only."""
         gpus = []
         
-        if not TORCH_AVAILABLE:
+        if not TORCH_AVAILABLE or torch is None:
             return gpus
         
         try:
@@ -193,11 +198,13 @@ class GPUDetector:
         """Detect AMD GPUs using ROCm."""
         gpus = []
         
-        if not TORCH_AVAILABLE:
+        if not TORCH_AVAILABLE or torch is None:
             return gpus
         
         try:
-            if hasattr(torch.version, 'hip') and torch.version.hip:
+            if (hasattr(torch, 'version') and 
+               hasattr(torch.version, 'hip') and  # type: ignore
+               torch.version.hip):  # type: ignore
                 for i in range(torch.cuda.device_count()):  # ROCm uses same API
                     name = torch.cuda.get_device_name(i)
                     props = torch.cuda.get_device_properties(i)
@@ -303,7 +310,7 @@ class GPUDetector:
         
         # Check for xformers availability
         try:
-            import xformers
+            import xformers  # type: ignore
             settings['use_xformers'] = True
             logger.info("xformers available, enabling attention optimization")
         except ImportError:
@@ -311,7 +318,7 @@ class GPUDetector:
         
         # Check for TensorRT
         try:
-            import tensorrt
+            import tensorrt  # type: ignore
             if self.cuda_available:
                 settings['use_tensorrt'] = True
                 logger.info("TensorRT available, can enable for inference acceleration")
@@ -368,18 +375,18 @@ class PerformanceMonitor:
         # Add GPU stats
         for i, gpu in enumerate(self.gpu_detector.gpus):
             try:
-                if PYNVML_AVAILABLE:
+                if PYNVML_AVAILABLE and pynvml is not None:
                     handle = pynvml.nvmlDeviceGetHandleByIndex(gpu.index)
                     memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                     util = pynvml.nvmlDeviceGetUtilizationRates(handle)
                     
-                    stats[f'gpu_{i}_memory_used_percent'] = (memory_info.used / memory_info.total) * 100
-                    stats[f'gpu_{i}_utilization'] = util.gpu
+                    stats[f'gpu_{i}_memory_used_percent'] = (int(memory_info.used) / int(memory_info.total)) * 100
+                    stats[f'gpu_{i}_utilization'] = float(util.gpu)
                     
                     try:
                         temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-                        stats[f'gpu_{i}_temperature'] = temp
-                    except:
+                        stats[f'gpu_{i}_temperature'] = float(temp)
+                    except Exception:
                         pass
                 else:
                     # Fallback to basic stats
@@ -422,7 +429,7 @@ def get_device_info() -> Tuple[str, GPUDetector]:
 
 def optimize_torch_settings(detector: GPUDetector):
     """Optimize PyTorch settings based on hardware."""
-    if not TORCH_AVAILABLE:
+    if not TORCH_AVAILABLE or torch is None:
         logger.warning("PyTorch not available, skipping optimization")
         return
     
@@ -446,7 +453,7 @@ def optimize_torch_settings(detector: GPUDetector):
 
 def clear_gpu_cache():
     """Clear GPU memory cache."""
-    if not TORCH_AVAILABLE:
+    if not TORCH_AVAILABLE or torch is None:
         logger.warning("PyTorch not available, cannot clear GPU cache")
         return
     

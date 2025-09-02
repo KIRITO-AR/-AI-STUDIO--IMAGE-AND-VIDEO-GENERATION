@@ -482,12 +482,12 @@ def display_generation_result(result, start_time, is_video=False):
     
     # Display images
     if len(result.images) == 1:
-        st.image(result.images[0], use_column_width=True)
+        st.image(result.images[0], use_container_width=True)
     else:
         cols = st.columns(min(len(result.images), 3))
         for i, img in enumerate(result.images):
             with cols[i % len(cols)]:
-                st.image(img, use_column_width=True)
+                st.image(img, use_container_width=True)
     
     # Save options
     col1, col2, col3 = st.columns(3)
@@ -539,7 +539,7 @@ def display_batch_results(results, start_time):
             for j, result in enumerate(successful[i:i+cols_per_row]):
                 with cols[j]:
                     if result.images:
-                        st.image(result.images[0], use_column_width=True)
+                        st.image(result.images[0], use_container_width=True)
                         st.caption(f"{result.params.prompt[:30]}...")
                         st.caption(f"Seed: {result.seed_used}")
         
@@ -565,7 +565,7 @@ def display_history():
             
             with col1:
                 if result.images:
-                    st.image(result.images[0], use_column_width=True)
+                    st.image(result.images[0], use_container_width=True)
             
             with col2:
                 st.write(f"**Prompt:** {result.params.prompt}")

@@ -365,12 +365,20 @@ def get_device_info() -> Tuple[str, GPUDetector]:
     
     if detector.cuda_available and detector.gpus:
         best_gpu = detector.get_best_gpu()
-        device = f"cuda:{best_gpu.index}"
-        logger.info(f"Using GPU: {best_gpu.name} (CUDA:{best_gpu.index})")
+        if best_gpu:
+            device = f"cuda:{best_gpu.index}"
+            logger.info(f"Using GPU: {best_gpu.name} (CUDA:{best_gpu.index})")
+        else:
+            device = "cpu"
+            logger.info("Using CPU (no suitable GPU found)")
     elif detector.rocm_available and detector.gpus:
         best_gpu = detector.get_best_gpu()
-        device = f"cuda:{best_gpu.index}"  # ROCm uses same API
-        logger.info(f"Using GPU: {best_gpu.name} (ROCm:{best_gpu.index})")
+        if best_gpu:
+            device = f"cuda:{best_gpu.index}"  # ROCm uses same API
+            logger.info(f"Using GPU: {best_gpu.name} (ROCm:{best_gpu.index})")
+        else:
+            device = "cpu"
+            logger.info("Using CPU (no suitable GPU found)")
     else:
         device = "cpu"
         logger.info("Using CPU (no compatible GPU found)")

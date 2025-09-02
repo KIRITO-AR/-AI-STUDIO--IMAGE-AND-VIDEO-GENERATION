@@ -386,11 +386,11 @@ class ModelManager:
         device_factor = 1.0
         if self.device == "cpu":
             device_factor = 10.0  # CPU is much slower
-        elif self.gpu_detector.get_best_gpu():
+        else:
             gpu = self.gpu_detector.get_best_gpu()
-            if gpu.memory_total < 6000:  # Less than 6GB
+            if gpu and gpu.memory_total < 6000:  # Less than 6GB
                 device_factor = 2.0
-            elif gpu.memory_total < 12000:  # 6-12GB
+            elif gpu and gpu.memory_total < 12000:  # 6-12GB
                 device_factor = 1.5
         
         estimated_time = base_time * resolution_factor * step_factor * device_factor

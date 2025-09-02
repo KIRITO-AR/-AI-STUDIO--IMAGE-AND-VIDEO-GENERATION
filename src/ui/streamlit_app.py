@@ -93,13 +93,16 @@ def display_system_info():
     
     if gpu_detector.gpus:
         best_gpu = gpu_detector.get_best_gpu()
-        st.sidebar.write(f"**GPU:** {best_gpu.name}")
-        st.sidebar.write(f"**VRAM:** {best_gpu.memory_total}MB")
-        
-        # Memory bar
-        memory_used_percent = (best_gpu.memory_used / best_gpu.memory_total) * 100
-        st.sidebar.progress(memory_used_percent / 100)
-        st.sidebar.caption(f"Memory usage: {memory_used_percent:.1f}%")
+        if best_gpu:
+            st.sidebar.write(f"**GPU:** {best_gpu.name}")
+            st.sidebar.write(f"**VRAM:** {best_gpu.memory_total}MB")
+            
+            # Memory bar
+            memory_used_percent = (best_gpu.memory_used / best_gpu.memory_total) * 100
+            st.sidebar.progress(memory_used_percent / 100)
+            st.sidebar.caption(f"Memory usage: {memory_used_percent:.1f}%")
+        else:
+            st.sidebar.warning("GPU detected but not accessible")
     else:
         st.sidebar.warning("No GPU detected - using CPU")
     

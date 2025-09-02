@@ -61,15 +61,15 @@ class GenerationResult:
     
     def save_images(self, output_dir: str, prefix: str = "generated") -> List[str]:
         """Save images to directory and return file paths."""
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
         
         saved_paths = []
         timestamp = int(time.time())
         
         for i, image in enumerate(self.images):
             filename = f"{prefix}_{timestamp}_{self.seed_used}_{i:03d}.png"
-            filepath = output_dir / filename
+            filepath = output_path / filename
             
             # Add metadata to image
             metadata_str = f"Prompt: {self.params.prompt}\n"
@@ -141,7 +141,7 @@ class GenerationEngine:
             
             # Check if current model supports the request
             current_model = self.model_manager.get_current_model()
-            if current_model.supports_video and params.num_frames > 1:
+            if current_model and current_model.supports_video and params.num_frames > 1:
                 return self.generate_video(params)
             
             self._update_status("Preparing generation...")
@@ -178,7 +178,8 @@ class GenerationEngine:
             }
             
             # Handle SDXL-specific parameters
-            if current_model.model_type == ModelType.STABLE_DIFFUSION_XL:
+            current_model = self.model_manager.get_current_model()
+            if current_model and current_model.model_type == ModelType.STABLE_DIFFUSION_XL:
                 # SDXL has different parameter names
                 if hasattr(pipeline, 'refiner'):
                     gen_args["denoising_end"] = 0.8
@@ -186,6 +187,8 @@ class GenerationEngine:
             # Generate images
             self._update_status("Generating images...")
             with torch.inference_mode():
+                if pipeline is None:
+                    raise RuntimeError("Pipeline not available")
                 result = pipeline(**gen_args)
             
             # Stop monitoring
@@ -195,11 +198,12 @@ class GenerationEngine:
             self._update_status(f"Generation completed in {generation_time:.2f}s")
             
             # Create result
+            current_model = self.model_manager.get_current_model()
             generation_result = GenerationResult(
                 images=result.images,
                 metadata={
                     "performance": perf_stats,
-                    "model": current_model.name,
+                    "model": current_model.name if current_model else "Unknown",
                     "device": self.model_manager.device
                 },
                 generation_time=generation_time,
@@ -274,6 +278,8 @@ class GenerationEngine:
             # Generate video
             self._update_status("Generating video frames...")
             with torch.inference_mode():
+                if pipeline is None:
+                    raise RuntimeError("Pipeline not available")
                 result = pipeline(**gen_args)
             
             # Convert video result to images if needed
@@ -289,11 +295,12 @@ class GenerationEngine:
             self._update_status(f"Video generation completed in {generation_time:.2f}s")
             
             # Create result
+            current_model = self.model_manager.get_current_model()
             generation_result = GenerationResult(
                 images=images,
                 metadata={
                     "performance": perf_stats,
-                    "model": current_model.name,
+                    "model": current_model.name if current_model else "Unknown",
                     "device": self.model_manager.device,
                     "video": True,
                     "num_frames": params.num_frames,
@@ -407,13 +414,13 @@ class GenerationEngine:
                 frames.append(np.array(img))
             
             # Save as MP4
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path_obj = Path(output_path)
+            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
             
-            imageio.mimsave(str(output_path), frames, fps=fps, quality=8)
+            imageio.mimsave(str(output_path_obj), frames, fps=fps, quality=8)
             
-            logger.info(f"Video saved to {output_path}")
-            return str(output_path)
+            logger.info(f"Video saved to {output_path_obj}")
+            return str(output_path_obj)
             
         except ImportError:
             raise RuntimeError("imageio required for video export. Install with: pip install imageio")

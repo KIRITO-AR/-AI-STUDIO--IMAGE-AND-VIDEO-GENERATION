@@ -13,22 +13,76 @@ from enum import Enum
 import threading
 import time
 
-import torch
-from diffusers import (
-    StableDiffusionPipeline,
-    StableDiffusionXLPipeline,
-    DiffusionPipeline,
-    AutoencoderKL,
-    DDIMScheduler,
-    DDPMScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    DPMSolverMultistepScheduler
-)
-from transformers import CLIPTextModel, CLIPTokenizer
+# Try to import torch and diffusers, but handle gracefully if not available
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
 
-from ..utils.gpu_utils import get_device_info, clear_gpu_cache, optimize_torch_settings
-from ..utils.config import get_config
+try:
+    from diffusers import (
+        StableDiffusionPipeline,
+        StableDiffusionXLPipeline,
+        DiffusionPipeline,
+        AutoencoderKL,
+        DDIMScheduler,
+        DDPMScheduler,
+        EulerAncestralDiscreteScheduler,
+        EulerDiscreteScheduler,
+        DPMSolverMultistepScheduler
+    )
+    DIFFUSERS_AVAILABLE = True
+except ImportError:
+    DIFFUSERS_AVAILABLE = False
+    # Create dummy classes to prevent errors
+    class DummyPipeline:
+        pass
+    StableDiffusionPipeline = DummyPipeline
+    StableDiffusionXLPipeline = DummyPipeline
+    DiffusionPipeline = DummyPipeline
+    AutoencoderKL = DummyPipeline
+    DDIMScheduler = DummyPipeline
+    DDPMScheduler = DummyPipeline
+    EulerAncestralDiscreteScheduler = DummyPipeline
+    EulerDiscreteScheduler = DummyPipeline
+    DPMSolverMultistepScheduler = DummyPipeline
+
+try:
+    from transformers import CLIPTextModel, CLIPTokenizer
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    CLIPTextModel = None
+    CLIPTokenizer = None
+
+import sys
+import os
+from pathlib import Path
+
+# Add parent directory to path for imports
+if __name__ != '__main__':
+    current_dir = Path(__file__).resolve().parent
+    src_dir = current_dir.parent
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+
+try:
+    from utils.gpu_utils import get_device_info, clear_gpu_cache, optimize_torch_settings
+    from utils.config import get_config
+except ImportError:
+    # Fallback for relative imports
+    try:
+        from ..utils.gpu_utils import get_device_info, clear_gpu_cache, optimize_torch_settings
+        from ..utils.config import get_config
+    except ImportError:
+        # Last resort - direct path import
+        current_dir = Path(__file__).resolve().parent
+        utils_dir = current_dir.parent / 'utils'
+        sys.path.insert(0, str(utils_dir.parent))
+        from utils.gpu_utils import get_device_info, clear_gpu_cache, optimize_torch_settings
+        from utils.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +116,15 @@ class ModelManager:
         self.model_cache = {}
         self.lock = threading.Lock()
         
-        # Initialize torch optimizations
-        optimize_torch_settings(self.gpu_detector)
+        # Check if required libraries are available
+        if not TORCH_AVAILABLE:
+            logger.error("PyTorch not available. Please install PyTorch to use AI models.")
+        if not DIFFUSERS_AVAILABLE:
+            logger.error("Diffusers not available. Please install diffusers to use AI models.")
+        
+        # Initialize torch optimizations if available
+        if TORCH_AVAILABLE:
+            optimize_torch_settings(self.gpu_detector)
         
         # Available models registry
         self.available_models = self._initialize_model_registry()
@@ -160,6 +221,14 @@ class ModelManager:
     
     def load_model(self, model_key: str, **kwargs) -> bool:
         """Load a model for generation."""
+        if not TORCH_AVAILABLE:
+            logger.error("PyTorch not available. Cannot load models.")
+            return False
+        
+        if not DIFFUSERS_AVAILABLE:
+            logger.error("Diffusers not available. Cannot load models.")
+            return False
+        
         with self.lock:
             try:
                 model_info = self.get_model_info(model_key)
@@ -254,7 +323,11 @@ class ModelManager:
         """Create AnimateDiff pipeline."""
         try:
             # This is a simplified version - actual AnimateDiff integration would be more complex
-            from diffusers import AnimateDiffPipeline
+            try:
+                from diffusers import AnimateDiffPipeline
+            except ImportError:
+                logger.error("AnimateDiff not available. Install with: pip install animatediff")
+                return None
             
             pipeline = AnimateDiffPipeline.from_pretrained(
                 "frankjoshua/toonyou_beta6",  # Base model
@@ -265,9 +338,6 @@ class ModelManager:
             
             return pipeline
             
-        except ImportError:
-            logger.error("AnimateDiff not available. Install with: pip install animatediff")
-            return None
         except Exception as e:
             logger.error(f"Failed to create AnimateDiff pipeline: {e}")
             return None

@@ -73,7 +73,7 @@ class ConfigManager:
     
     def __init__(self, config_file: Optional[str] = None):
         self.config_file = config_file or self._find_config_file()
-        self.config = configparser.ConfigParser()
+        self.config = configparser.RawConfigParser()  # Use RawConfigParser to avoid interpolation
         self._load_config()
         
         # Initialize configuration objects
@@ -115,30 +115,30 @@ class ConfigManager:
             default_image_model=section.get('default_image_model', 'runwayml/stable-diffusion-v1-5'),
             default_video_model=section.get('default_video_model', 'guoyww/animatediff-motion-adapter-v1-5-2'),
             model_cache_dir=section.get('model_cache_dir', './models_cache'),
-            max_memory_usage=section.getfloat('max_memory_usage', 0.8)
+            max_memory_usage=float(section.get('max_memory_usage', '0.8'))
         )
     
     def _load_generation_config(self) -> GenerationConfig:
         """Load generation configuration."""
         section = self.config['generation']
         return GenerationConfig(
-            default_steps=section.getint('default_steps', 20),
-            default_guidance_scale=section.getfloat('default_guidance_scale', 7.5),
-            default_width=section.getint('default_width', 512),
-            default_height=section.getint('default_height', 512),
-            default_video_frames=section.getint('default_video_frames', 16),
-            default_video_fps=section.getint('default_video_fps', 8)
+            default_steps=int(section.get('default_steps', '20')),
+            default_guidance_scale=float(section.get('default_guidance_scale', '7.5')),
+            default_width=int(section.get('default_width', '512')),
+            default_height=int(section.get('default_height', '512')),
+            default_video_frames=int(section.get('default_video_frames', '16')),
+            default_video_fps=int(section.get('default_video_fps', '8'))
         )
     
     def _load_performance_config(self) -> PerformanceConfig:
         """Load performance configuration."""
         section = self.config['performance']
         return PerformanceConfig(
-            use_xformers=section.getboolean('use_xformers', True),
-            use_tensorrt=section.getboolean('use_tensorrt', False),
-            enable_cpu_offload=section.getboolean('enable_cpu_offload', True),
-            use_attention_slicing=section.getboolean('use_attention_slicing', True),
-            enable_model_cpu_offload=section.getboolean('enable_model_cpu_offload', False)
+            use_xformers=section.get('use_xformers', 'true').lower() == 'true',
+            use_tensorrt=section.get('use_tensorrt', 'false').lower() == 'true',
+            enable_cpu_offload=section.get('enable_cpu_offload', 'true').lower() == 'true',
+            use_attention_slicing=section.get('use_attention_slicing', 'true').lower() == 'true',
+            enable_model_cpu_offload=section.get('enable_model_cpu_offload', 'false').lower() == 'true'
         )
     
     def _load_ui_config(self) -> UIConfig:
@@ -146,8 +146,8 @@ class ConfigManager:
         section = self.config['ui']
         return UIConfig(
             theme=section.get('theme', 'dark'),
-            show_advanced_options=section.getboolean('show_advanced_options', False),
-            auto_save_outputs=section.getboolean('auto_save_outputs', True),
+            show_advanced_options=section.get('show_advanced_options', 'false').lower() == 'true',
+            auto_save_outputs=section.get('auto_save_outputs', 'true').lower() == 'true',
             output_directory=section.get('output_directory', './outputs')
         )
     
@@ -155,9 +155,9 @@ class ConfigManager:
         """Load cloud configuration."""
         section = self.config['cloud']
         return CloudConfig(
-            enable_cloud_gpu=section.getboolean('enable_cloud_gpu', False),
+            enable_cloud_gpu=section.get('enable_cloud_gpu', 'false').lower() == 'true',
             preferred_provider=section.get('preferred_provider', 'aws'),
-            max_cloud_cost_per_hour=section.getfloat('max_cloud_cost_per_hour', 5.0)
+            max_cloud_cost_per_hour=float(section.get('max_cloud_cost_per_hour', '5.0'))
         )
     
     def _load_logging_config(self) -> LoggingConfig:
@@ -166,16 +166,16 @@ class ConfigManager:
         return LoggingConfig(
             log_level=section.get('log_level', 'INFO'),
             log_file=section.get('log_file', './logs/app.log'),
-            enable_performance_metrics=section.getboolean('enable_performance_metrics', True)
+            enable_performance_metrics=section.get('enable_performance_metrics', 'true').lower() == 'true'
         )
     
     def _load_security_config(self) -> SecurityConfig:
         """Load security configuration."""
         section = self.config['security']
         return SecurityConfig(
-            allow_remote_access=section.getboolean('allow_remote_access', False),
-            require_api_key=section.getboolean('require_api_key', False),
-            max_requests_per_minute=section.getint('max_requests_per_minute', 60)
+            allow_remote_access=section.get('allow_remote_access', 'false').lower() == 'true',
+            require_api_key=section.get('require_api_key', 'false').lower() == 'true',
+            max_requests_per_minute=int(section.get('max_requests_per_minute', '60'))
         )
     
     def get_all_config(self) -> Dict[str, Any]:

@@ -3,7 +3,16 @@ Streamlit prototype frontend for AI Generation Studio.
 Provides a quick and easy web interface for image and video generation.
 """
 
-import streamlit as st
+# Try to import streamlit, but handle gracefully if not available
+try:
+    import streamlit as st
+    STREAMLIT_AVAILABLE = True
+except ImportError:
+    STREAMLIT_AVAILABLE = False
+    print("Streamlit not available. Please install streamlit: pip install streamlit")
+    import sys
+    sys.exit(1)
+
 import logging
 import sys
 import os
@@ -13,10 +22,18 @@ import zipfile
 from typing import List, Dict
 
 # Add src to path for imports
-sys.path.append(str(Path(__file__).parent.parent))
+current_file_path = Path(__file__).resolve()
+src_path = current_file_path.parent.parent
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
-from core import get_generation_engine, get_model_manager, GenerationParams
-from utils import get_device_info, clear_gpu_cache
+try:
+    from core import get_generation_engine, get_model_manager, GenerationParams
+    from utils import get_device_info, clear_gpu_cache
+except ImportError as e:
+    st.error(f"Import error: {e}")
+    st.error("Please make sure you're running from the project root directory")
+    st.stop()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

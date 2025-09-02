@@ -12,11 +12,42 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from PIL import Image
 import numpy as np
-import torch
+
+# Try to import torch, but handle gracefully if not available
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+if __name__ != '__main__':
+    current_dir = Path(__file__).resolve().parent
+    src_dir = current_dir.parent
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
 
 from .model_manager import get_model_manager, ModelType
-from ..utils.gpu_utils import PerformanceMonitor, clear_gpu_cache
-from ..utils.config import get_config
+
+try:
+    from utils.gpu_utils import PerformanceMonitor, clear_gpu_cache
+    from utils.config import get_config
+except ImportError:
+    # Fallback for relative imports
+    try:
+        from ..utils.gpu_utils import PerformanceMonitor, clear_gpu_cache
+        from ..utils.config import get_config
+    except ImportError:
+        # Last resort - direct path import
+        current_dir = Path(__file__).resolve().parent
+        utils_dir = current_dir.parent / 'utils'
+        sys.path.insert(0, str(utils_dir.parent))
+        from utils.gpu_utils import PerformanceMonitor, clear_gpu_cache
+        from utils.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -156,10 +187,15 @@ class GenerationEngine:
             generator = None
             seed_used = params.seed
             if seed_used is None:
-                seed_used = torch.randint(0, 2**32 - 1, (1,)).item()
+                if TORCH_AVAILABLE:
+                    seed_used = torch.randint(0, 2**32 - 1, (1,)).item()
+                else:
+                    import random
+                    seed_used = random.randint(0, 2**32 - 1)
             
-            generator = torch.Generator(device=self.model_manager.device)
-            generator.manual_seed(seed_used)
+            if TORCH_AVAILABLE:
+                generator = torch.Generator(device=self.model_manager.device)
+                generator.manual_seed(seed_used)
             
             self._update_status(f"Generating with seed: {seed_used}")
             
@@ -186,10 +222,13 @@ class GenerationEngine:
             
             # Generate images
             self._update_status("Generating images...")
-            with torch.inference_mode():
-                if pipeline is None:
-                    raise RuntimeError("Pipeline not available")
-                result = pipeline(**gen_args)
+            if TORCH_AVAILABLE:
+                with torch.inference_mode():
+                    if pipeline is None:
+                        raise RuntimeError("Pipeline not available")
+                    result = pipeline(**gen_args)
+            else:
+                raise RuntimeError("PyTorch not available. Cannot generate images.")
             
             # Stop monitoring
             perf_stats = self.performance_monitor.stop_monitoring()
@@ -254,10 +293,15 @@ class GenerationEngine:
             generator = None
             seed_used = params.seed
             if seed_used is None:
-                seed_used = torch.randint(0, 2**32 - 1, (1,)).item()
+                if TORCH_AVAILABLE:
+                    seed_used = torch.randint(0, 2**32 - 1, (1,)).item()
+                else:
+                    import random
+                    seed_used = random.randint(0, 2**32 - 1)
             
-            generator = torch.Generator(device=self.model_manager.device)
-            generator.manual_seed(seed_used)
+            if TORCH_AVAILABLE:
+                generator = torch.Generator(device=self.model_manager.device)
+                generator.manual_seed(seed_used)
             
             self._update_status(f"Generating video with seed: {seed_used}")
             
@@ -277,10 +321,13 @@ class GenerationEngine:
             
             # Generate video
             self._update_status("Generating video frames...")
-            with torch.inference_mode():
-                if pipeline is None:
-                    raise RuntimeError("Pipeline not available")
-                result = pipeline(**gen_args)
+            if TORCH_AVAILABLE:
+                with torch.inference_mode():
+                    if pipeline is None:
+                        raise RuntimeError("Pipeline not available")
+                    result = pipeline(**gen_args)
+            else:
+                raise RuntimeError("PyTorch not available. Cannot generate videos.")
             
             # Convert video result to images if needed
             if hasattr(result, 'frames'):

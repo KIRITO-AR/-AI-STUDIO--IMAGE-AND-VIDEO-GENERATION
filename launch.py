@@ -6,12 +6,21 @@ Provides easy startup options for different interfaces.
 import sys
 import subprocess
 import argparse
+import os
 from pathlib import Path
 
 def launch_streamlit():
     """Launch the Streamlit interface."""
-    streamlit_app = Path(__file__).parent / "src" / "ui" / "streamlit_app.py"
-    cmd = [sys.executable, "-m", "streamlit", "run", str(streamlit_app)]
+    import os
+    
+    # Ensure we're in the project root directory
+    script_dir = Path(__file__).parent
+    os.chdir(script_dir)
+    
+    streamlit_app = script_dir / "src" / "ui" / "streamlit_app.py"
+    
+    # Use py command for Windows Python environment
+    cmd = ["py", "-m", "streamlit", "run", str(streamlit_app)]
     
     print("🚀 Launching Streamlit interface...")
     print("Open your browser to: http://localhost:8501")

@@ -1,0 +1,50 @@
+# Minimal requirements for AI Generation Studio
+# Core dependencies that are essential for basic functionality
+
+# Core AI and Machine Learning
+torch>=2.0.0
+torchvision>=0.15.0
+diffusers>=0.21.0
+transformers>=4.30.0
+accelerate>=0.20.0
+safetensors>=0.3.0
+
+# Hugging Face ecosystem
+huggingface-hub>=0.15.0
+
+# Image/Video processing
+Pillow>=9.5.0
+opencv-python>=4.7.0
+imageio>=2.28.0
+imageio-ffmpeg>=0.4.8
+numpy>=1.24.0
+
+# UI Frameworks
+streamlit>=1.25.0
+
+# Web and API
+requests>=2.31.0
+
+# Utilities and helpers
+scipy>=1.10.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+omegaconf>=2.3.0
+pyyaml>=6.0
+click>=8.1.0
+
+# GPU monitoring
+pynvml>=11.5.0  # NVIDIA GPU monitoring
+psutil>=5.9.0  # System monitoring
+
+# File handling
+pathlib2>=2.3.7
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Progress bars and UI enhancements
+rich>=13.4.0
+
+# Logging
+loguru>=0.7.0

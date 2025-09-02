@@ -4,7 +4,7 @@ torchvision>=0.15.0
 diffusers>=0.21.0
 transformers>=4.30.0
 accelerate>=0.20.0
-xformers>=0.0.20
+# xformers>=0.0.20  # Optional - may have compatibility issues
 safetensors>=0.3.0
 
 # Hugging Face ecosystem
@@ -19,8 +19,8 @@ imageio-ffmpeg>=0.4.8
 av>=10.0.0
 
 # AnimateDiff and video generation
-controlnet-aux>=0.4.0
-ip-adapter>=0.1.0
+controlnet-aux>=0.0.7
+# ip-adapter>=0.1.0  # Optional - may not be available
 
 # UI Frameworks
 streamlit>=1.25.0
@@ -39,7 +39,7 @@ google-cloud-storage>=2.9.0  # Google Cloud
 azure-storage-blob>=12.16.0  # Azure
 
 # Performance and optimization
-tensorrt>=8.6.0  # NVIDIA TensorRT (optional)
+# tensorrt>=8.6.0  # NVIDIA TensorRT (optional, platform specific)
 onnx>=1.14.0
 onnxruntime-gpu>=1.15.0
 

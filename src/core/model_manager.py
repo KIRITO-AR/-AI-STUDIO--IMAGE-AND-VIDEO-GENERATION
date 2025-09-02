@@ -177,7 +177,26 @@ class ModelManager:
                 memory_requirement=6000,
                 supports_video=True,
                 supports_controlnet=False,
-                description="Generate short video clips from text prompts"
+                description="Generate short video clips from text prompts (requires 6GB+ VRAM)"
+            ),
+            # Advanced models for cloud GPUs with high VRAM
+            "flux_dev": ModelInfo(
+                name="FLUX.1-dev",
+                model_type=ModelType.CUSTOM,
+                model_id="black-forest-labs/FLUX.1-dev",
+                memory_requirement=24000,
+                supports_video=False,
+                supports_controlnet=False,
+                description="State-of-the-art image generation with exceptional quality (requires 24GB+ VRAM)"
+            ),
+            "flux_schnell": ModelInfo(
+                name="FLUX.1-schnell",
+                model_type=ModelType.CUSTOM,
+                model_id="black-forest-labs/FLUX.1-schnell",
+                memory_requirement=16000,
+                supports_video=False,
+                supports_controlnet=False,
+                description="Fast version of FLUX with excellent quality (requires 16GB+ VRAM)"
             )
         }
     
@@ -205,7 +224,74 @@ class ModelManager:
         
         available_memory = best_gpu.memory_free
         required_memory = model_info.memory_requirement
+        total_gpu_memory = best_gpu.memory_total
         
+        # Cloud GPU optimization (48GB+)
+        if total_gpu_memory >= 48000:  # 48GB+ (cloud GPUs)
+            # Large cloud GPUs can handle any model
+            return {
+                "compatible": True,
+                "reason": "Cloud GPU detected - fully compatible with all models",
+                "recommendations": [
+                    "Enable batch processing for faster generation",
+                    "Use maximum resolution settings",
+                    "Consider running multiple models simultaneously"
+                ]
+            }
+        total_gpu_memory = best_gpu.memory_total
+        
+        # Cloud GPU optimization (64GB+)
+        if total_gpu_memory >= 48000:  # 48GB+ (cloud GPUs)
+            # Large cloud GPUs can handle any model
+            return {
+                "compatible": True,
+                "reason": "Cloud GPU detected - fully compatible with all models",
+                "recommendations": [
+                    "Enable batch processing for faster generation",
+                    "Use maximum resolution settings",
+                    "Consider running multiple models simultaneously"
+                ]
+            }
+        
+        # Special handling for 4GB GPUs like GTX 1650
+        if total_gpu_memory <= 4096:  # 4GB or less
+            # For 4GB GPUs, be more flexible with memory requirements
+            if model_info.model_type == ModelType.STABLE_DIFFUSION_1_5:
+                # SD 1.5 models can work with aggressive optimizations on 4GB GPUs
+                if available_memory >= 2500:  # At least 2.5GB free
+                    return {
+                        "compatible": True, 
+                        "reason": "Compatible with memory optimizations",
+                        "recommendations": [
+                            "Using CPU offloading for memory efficiency",
+                            "Attention slicing enabled",
+                            "VAE slicing enabled"
+                        ]
+                    }
+            elif model_info.model_type == ModelType.STABLE_DIFFUSION_XL:
+                # SDXL is too heavy for 4GB GPUs, suggest alternatives
+                return {
+                    "compatible": False,
+                    "reason": f"SDXL requires more memory than available on 4GB GPU. Required: {required_memory}MB, Available: {available_memory}MB",
+                    "recommendations": [
+                        "Use Stable Diffusion 1.5 instead",
+                        "Consider upgrading to a GPU with 8GB+ VRAM",
+                        "Use CPU mode (very slow)"
+                    ]
+                }
+            elif model_info.model_type == ModelType.CUSTOM:
+                # FLUX and other custom models need more memory
+                return {
+                    "compatible": False,
+                    "reason": f"Advanced models require more memory. Required: {required_memory}MB, Available: {available_memory}MB",
+                    "recommendations": [
+                        "Use Stable Diffusion 1.5 instead",
+                        "Consider cloud GPU instances",
+                        "Upgrade to higher VRAM GPU"
+                    ]
+                }
+        
+        # Standard compatibility check for other GPUs
         if available_memory < required_memory:
             return {
                 "compatible": False,

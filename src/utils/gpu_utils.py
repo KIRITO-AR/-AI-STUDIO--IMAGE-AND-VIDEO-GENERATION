@@ -269,12 +269,22 @@ class GPUDetector:
         
         memory_gb = best_gpu.memory_total / 1024
         
-        if memory_gb >= 24:  # High-end cards (RTX 4090, A100, etc.)
+        if memory_gb >= 48:  # High-end cloud GPUs (64GB, 80GB, etc.)
+            return {
+                'batch_size': 8,
+                'max_resolution': 2048,
+                'enable_cpu_offload': False,
+                'use_attention_slicing': False,
+                'enable_flux_models': True,
+                'enable_large_batch_processing': True
+            }
+        elif memory_gb >= 24:  # High-end cards (RTX 4090, A100, etc.)
             return {
                 'batch_size': 4,
-                'max_resolution': 1024,
+                'max_resolution': 1536,
                 'enable_cpu_offload': False,
-                'use_attention_slicing': False
+                'use_attention_slicing': False,
+                'enable_flux_models': True
             }
         elif memory_gb >= 12:  # Mid-high range (RTX 3080Ti, RTX 4070Ti, etc.)
             return {
@@ -350,6 +360,28 @@ class GPUDetector:
             logger.info("Enabling model CPU offloading for 4GB GPU")
         
         return settings
+    
+    def is_cloud_gpu(self) -> bool:
+        """Detect if running on a cloud GPU instance."""
+        if not self.gpus:
+            return False
+            
+        best_gpu = self.get_best_gpu()
+        if not best_gpu:
+            return False
+            
+        # Cloud GPUs typically have very high VRAM (24GB+)
+        # and often have specific naming patterns
+        cloud_indicators = [
+            best_gpu.memory_total >= 24000,  # 24GB+ VRAM
+            "Tesla" in best_gpu.name,
+            "A100" in best_gpu.name,
+            "H100" in best_gpu.name,
+            "V100" in best_gpu.name,
+            best_gpu.memory_total >= 48000,  # 48GB+ definitely cloud
+        ]
+        
+        return any(cloud_indicators)
 
 class PerformanceMonitor:
     """Monitors GPU and system performance during generation."""

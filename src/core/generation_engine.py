@@ -151,7 +151,7 @@ class GenerationEngine:
         if self.status_callback:
             self.status_callback(status)
     
-    def _progress_callback_wrapper(self, step: int, timestep: float, latents: torch.FloatTensor):
+    def _progress_callback_wrapper(self, step: int, timestep: float, latents):
         """Wrapper for diffusion pipeline progress callback (3-parameter version)."""
         if self.progress_callback:
             # For backward compatibility, assume 20 steps if we can't determine total
@@ -197,14 +197,14 @@ class GenerationEngine:
             seed_used = params.seed
             if seed_used is None:
                 if TORCH_AVAILABLE:
-                    seed_used = torch.randint(0, 2**32 - 1, (1,)).item()
+                    seed_used = int(torch.randint(0, 2**32 - 1, (1,)).item())
                 else:
                     import random
                     seed_used = random.randint(0, 2**32 - 1)
             
             if TORCH_AVAILABLE:
                 generator = torch.Generator(device=self.model_manager.device)
-                generator.manual_seed(seed_used)
+                generator.manual_seed(int(seed_used))
             
             self._update_status(f"Generating with seed: {seed_used}")
             
@@ -255,7 +255,7 @@ class GenerationEngine:
                     "device": self.model_manager.device
                 },
                 generation_time=generation_time,
-                seed_used=seed_used,
+                seed_used=int(seed_used),
                 params=params
             )
             
@@ -303,14 +303,14 @@ class GenerationEngine:
             seed_used = params.seed
             if seed_used is None:
                 if TORCH_AVAILABLE:
-                    seed_used = torch.randint(0, 2**32 - 1, (1,)).item()
+                    seed_used = int(torch.randint(0, 2**32 - 1, (1,)).item())
                 else:
                     import random
                     seed_used = random.randint(0, 2**32 - 1)
             
             if TORCH_AVAILABLE:
                 generator = torch.Generator(device=self.model_manager.device)
-                generator.manual_seed(seed_used)
+                generator.manual_seed(int(seed_used))
             
             self._update_status(f"Generating video with seed: {seed_used}")
             
@@ -363,7 +363,7 @@ class GenerationEngine:
                     "fps": params.fps
                 },
                 generation_time=generation_time,
-                seed_used=seed_used,
+                seed_used=int(seed_used),
                 params=params
             )
             

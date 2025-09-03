@@ -217,7 +217,6 @@ class GenerationEngine:
             # Prepare generation arguments
             gen_args = {
                 "prompt": params.prompt,
-                "negative_prompt": params.negative_prompt,
                 "width": params.width,
                 "height": params.height,
                 "num_inference_steps": params.num_inference_steps,
@@ -228,12 +227,24 @@ class GenerationEngine:
                 "callback_on_step_end_tensor_inputs": ['latents']
             }
             
-            # Handle SDXL-specific parameters
+            # Handle model-specific parameters
             current_model = self.model_manager.get_current_model()
-            if current_model and current_model.model_type == ModelType.STABLE_DIFFUSION_XL:
+            if current_model and current_model.model_type == ModelType.FLUX:
+                # FLUX models have specific parameter requirements
+                gen_args.update({
+                    "max_sequence_length": 512,  # FLUX parameter
+                })
+                # Remove negative prompt for FLUX (not supported)
+                if "negative_prompt" in gen_args:
+                    del gen_args["negative_prompt"]
+            elif current_model and current_model.model_type == ModelType.STABLE_DIFFUSION_XL:
                 # SDXL has different parameter names
+                gen_args["negative_prompt"] = params.negative_prompt
                 if hasattr(pipeline, 'refiner'):
                     gen_args["denoising_end"] = 0.8
+            else:
+                # Standard Stable Diffusion models
+                gen_args["negative_prompt"] = params.negative_prompt
             
             # Generate images
             self._update_status("Generating images...")

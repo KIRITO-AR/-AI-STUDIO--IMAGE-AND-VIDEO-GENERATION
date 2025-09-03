@@ -32,6 +32,8 @@ try:
     from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler  # type: ignore
     from diffusers.schedulers.scheduling_euler_discrete import EulerDiscreteScheduler  # type: ignore
     from diffusers.schedulers.scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler  # type: ignore
+    # Import FLUX pipeline
+    from diffusers import FluxPipeline  # type: ignore
     DIFFUSERS_AVAILABLE = True
 except ImportError as e:
     DIFFUSERS_AVAILABLE = False
@@ -50,6 +52,7 @@ except ImportError as e:
     EulerAncestralDiscreteScheduler = DummyPipeline  # type: ignore
     EulerDiscreteScheduler = DummyPipeline  # type: ignore
     DPMSolverMultistepScheduler = DummyPipeline  # type: ignore
+    FluxPipeline = DummyPipeline  # type: ignore
 
 try:
     from transformers import CLIPTextModel, CLIPTokenizer
@@ -106,6 +109,7 @@ class ModelType(Enum):
     STABLE_DIFFUSION_1_5 = "sd15"
     STABLE_DIFFUSION_XL = "sdxl" 
     ANIMATEDIFF = "animatediff"
+    FLUX = "flux"
     CUSTOM = "custom"
 
 @dataclass
@@ -197,7 +201,7 @@ class ModelManager:
             # Advanced models for cloud GPUs with high VRAM
             "flux_dev": ModelInfo(
                 name="FLUX.1-dev",
-                model_type=ModelType.CUSTOM,
+                model_type=ModelType.FLUX,
                 model_id="black-forest-labs/FLUX.1-dev",
                 memory_requirement=24000,
                 supports_video=False,
@@ -206,7 +210,7 @@ class ModelManager:
             ),
             "flux_schnell": ModelInfo(
                 name="FLUX.1-schnell",
-                model_type=ModelType.CUSTOM,
+                model_type=ModelType.FLUX,
                 model_id="black-forest-labs/FLUX.1-schnell",
                 memory_requirement=16000,
                 supports_video=False,
@@ -303,6 +307,17 @@ class ModelManager:
                         "Use Stable Diffusion 1.5 instead",
                         "Consider cloud GPU instances",
                         "Upgrade to higher VRAM GPU"
+                    ]
+                }
+            elif model_info.model_type == ModelType.FLUX:
+                # FLUX models need significant memory
+                return {
+                    "compatible": False,
+                    "reason": f"FLUX models require more memory. Required: {required_memory}MB, Available: {available_memory}MB",
+                    "recommendations": [
+                        "Use Stable Diffusion 1.5 instead",
+                        "Consider cloud GPU instances with 16GB+ VRAM",
+                        "Upgrade to RTX 4080/4090 or similar"
                     ]
                 }
         
@@ -410,6 +425,9 @@ class ModelManager:
             elif model_info.model_type == ModelType.ANIMATEDIFF:
                 # AnimateDiff requires special handling
                 pipeline = self._create_animatediff_pipeline(model_info, dtype, **kwargs)
+            elif model_info.model_type == ModelType.FLUX:
+                # FLUX models use FluxPipeline
+                pipeline = self._create_flux_pipeline(model_info, dtype, **kwargs)
             else:
                 # Standard Stable Diffusion
                 pipeline = StableDiffusionPipeline.from_pretrained(  # type: ignore
@@ -468,6 +486,45 @@ class ModelManager:
             logger.error(f"Failed to create AnimateDiff pipeline: {e}")
             return None
     
+    def _create_flux_pipeline(self, model_info: ModelInfo, dtype, **kwargs):
+        """Create FLUX pipeline."""
+        try:
+            logger.info(f"Creating FLUX pipeline for {model_info.name}")
+            
+            # Remove conflicting kwargs for FLUX
+            flux_kwargs = kwargs.copy()
+            flux_kwargs.pop('safety_checker', None)
+            flux_kwargs.pop('requires_safety_checker', None)
+            flux_kwargs.pop('use_onnx', None)
+            flux_kwargs.pop('provider', None)
+            
+            # Use bfloat16 for FLUX as recommended
+            if TORCH_AVAILABLE and torch is not None and hasattr(torch, 'bfloat16'):
+                flux_dtype = torch.bfloat16
+            else:
+                flux_dtype = dtype
+            
+            # Create FLUX pipeline
+            pipeline = FluxPipeline.from_pretrained(  # type: ignore
+                model_info.model_id,
+                torch_dtype=flux_dtype,
+                **flux_kwargs
+            )
+            
+            logger.info(f"FLUX pipeline created successfully")
+            return pipeline
+            
+        except Exception as e:
+            logger.error(f"Failed to create FLUX pipeline: {e}")
+            # If this is a 401 error, provide specific guidance
+            if '401' in str(e) or 'authorization' in str(e).lower():
+                logger.error("FLUX model access is restricted. You need to:")
+                logger.error("1. Create a Hugging Face account at https://huggingface.co")
+                logger.error("2. Request access to the FLUX model repository")
+                logger.error("3. Install and configure huggingface-hub: pip install huggingface-hub")
+                logger.error("4. Login with: huggingface-cli login")
+            return None
+    
     def _get_scheduler(self, scheduler_name: str, config):
         """Get scheduler by name."""
         schedulers = {
@@ -491,6 +548,19 @@ class ModelManager:
             # Get optimization settings
             opt_settings = self.gpu_detector.get_optimization_settings()
             memory_settings = self.gpu_detector.get_memory_recommendations()
+            
+            # FLUX models need specific optimizations
+            if model_info.model_type == ModelType.FLUX:
+                # Enable CPU offloading for FLUX (recommended for memory efficiency)
+                try:
+                    pipeline.enable_model_cpu_offload()
+                    logger.info("FLUX: Model CPU offloading enabled")
+                except Exception as e:
+                    logger.warning(f"Failed to enable CPU offloading for FLUX: {e}")
+                
+                # Don't apply some optimizations that might conflict with FLUX
+                logger.info("FLUX optimizations applied")
+                return
             
             # Enable attention slicing for memory efficiency
             if memory_settings.get('use_attention_slicing', True):
@@ -520,8 +590,9 @@ class ModelManager:
             if opt_settings.get('use_torch_compile', False):
                 try:
                     if TORCH_AVAILABLE and torch is not None and hasattr(torch, 'compile'):
-                        pipeline.unet = torch.compile(pipeline.unet)
-                        logger.info("Model compiled with torch.compile")
+                        if hasattr(pipeline, 'unet'):
+                            pipeline.unet = torch.compile(pipeline.unet)
+                            logger.info("Model compiled with torch.compile")
                 except:
                     logger.warning("Failed to compile model")
             
@@ -565,7 +636,8 @@ class ModelManager:
         base_times = {
             ModelType.STABLE_DIFFUSION_1_5: 2.0,
             ModelType.STABLE_DIFFUSION_XL: 4.0,
-            ModelType.ANIMATEDIFF: 10.0
+            ModelType.ANIMATEDIFF: 10.0,
+            ModelType.FLUX: 6.0  # FLUX models are slower but high quality
         }
         
         base_time = base_times.get(self.current_model_info.model_type, 3.0)

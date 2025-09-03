@@ -78,6 +78,9 @@ class GenerationParams:
     clip_skip: int = 1
     eta: float = 0.0
     
+    # Qwen-specific parameters
+    aspect_ratio: str = "1:1"  # For Qwen models
+    
     def __post_init__(self):
         """Validate parameters after initialization."""
         self.width = max(64, min(2048, self.width))
@@ -85,6 +88,19 @@ class GenerationParams:
         self.num_inference_steps = max(1, min(100, self.num_inference_steps))
         self.guidance_scale = max(0.0, min(30.0, self.guidance_scale))
         self.num_images_per_prompt = max(1, min(10, self.num_images_per_prompt))
+    
+    def get_qwen_dimensions(self) -> tuple[int, int]:
+        """Get width and height for Qwen models based on aspect ratio."""
+        aspect_ratios = {
+            "1:1": (1328, 1328),
+            "16:9": (1664, 928),
+            "9:16": (928, 1664),
+            "4:3": (1472, 1140),
+            "3:4": (1140, 1472),
+            "3:2": (1584, 1056),
+            "2:3": (1056, 1584),
+        }
+        return aspect_ratios.get(self.aspect_ratio, (1328, 1328))
 
 @dataclass
 class GenerationResult:
@@ -237,6 +253,26 @@ class GenerationEngine:
                 # Remove negative prompt for FLUX (not supported)
                 if "negative_prompt" in gen_args:
                     del gen_args["negative_prompt"]
+            elif current_model and current_model.model_type == ModelType.QWEN:
+                # Qwen models have specific parameter requirements
+                qwen_width, qwen_height = params.get_qwen_dimensions()
+                gen_args.update({
+                    "width": qwen_width,
+                    "height": qwen_height,
+                    "true_cfg_scale": 4.0,  # Qwen parameter
+                })
+                # Add multilingual support for Qwen
+                positive_magic = {
+                    "en": ", Ultra HD, 4K, cinematic composition.",
+                    "zh": ", 超清，4K，电影级构图."
+                }
+                # Detect if prompt is Chinese (simple heuristic)
+                is_chinese = any('\u4e00' <= char <= '\u9fff' for char in params.prompt)
+                magic_suffix = positive_magic["zh"] if is_chinese else positive_magic["en"]
+                gen_args["prompt"] = params.prompt + magic_suffix
+                
+                # Qwen supports negative prompts
+                gen_args["negative_prompt"] = params.negative_prompt if params.negative_prompt else " "
             elif current_model and current_model.model_type == ModelType.STABLE_DIFFUSION_XL:
                 # SDXL has different parameter names
                 gen_args["negative_prompt"] = params.negative_prompt

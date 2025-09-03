@@ -220,10 +220,10 @@ class ModelManager:
                 name="Qwen-Image",
                 model_type=ModelType.QWEN,
                 model_id="Qwen/Qwen-Image",
-                memory_requirement=12000,  # Reduced from 8GB to 12GB for more accurate cloud GPU estimation
+                memory_requirement=8000,  # 8GB VRAM requirement
                 supports_video=False,
                 supports_controlnet=False,
-                description="High-quality image generation with multiple aspect ratios and multilingual support (12GB+ VRAM, optimized for cloud GPUs)"
+                description="High-quality image generation with multiple aspect ratios, multilingual support, and configurable resolution (8GB+ VRAM)"
             )
         }
     
@@ -255,43 +255,16 @@ class ModelManager:
         
         # Cloud GPU optimization (48GB+)
         if total_gpu_memory >= 48000:  # 48GB+ (cloud GPUs)
-            # Large cloud GPUs can handle any model
             return {
                 "compatible": True,
-                "reason": "Cloud GPU detected - fully compatible with all models",
+                "reason": f"Cloud GPU detected ({int(total_gpu_memory/1024)}GB) - fully compatible with all models",
                 "recommendations": [
+                    "Optimal performance expected",
                     "Enable batch processing for faster generation",
                     "Use maximum resolution settings",
                     "Consider running multiple models simultaneously"
                 ]
             }
-        total_gpu_memory = best_gpu.memory_total
-        
-        # Cloud GPU optimization (64GB+)
-        if total_gpu_memory >= 48000:  # 48GB+ (cloud GPUs)
-            # Large cloud GPUs can handle any model with optimized settings
-            if model_info.model_type == ModelType.QWEN:
-                return {
-                    "compatible": True,
-                    "reason": f"Cloud GPU detected ({int(total_gpu_memory/1024)}GB) - fully compatible with Qwen using optimized loading",
-                    "recommendations": [
-                        "Using cloud-optimized memory management",
-                        "Sequential CPU offloading enabled for stability",
-                        "Enhanced memory cleanup for fragmentation prevention",
-                        "bfloat16 precision for optimal performance"
-                    ]
-                }
-            else:
-                return {
-                    "compatible": True,
-                    "reason": f"Cloud GPU detected ({int(total_gpu_memory/1024)}GB) - fully compatible with all models",
-                    "recommendations": [
-                        "Enable batch processing for faster generation",
-                        "Use maximum resolution settings",
-                        "Consider running multiple models simultaneously",
-                        "Optimal performance expected"
-                    ]
-                }
         
         # Special handling for 4GB GPUs like GTX 1650
         if total_gpu_memory <= 4096:  # 4GB or less
@@ -561,8 +534,8 @@ class ModelManager:
             return None
     
     def _create_qwen_pipeline(self, model_info: ModelInfo, dtype, **kwargs):
-        """Create Qwen-Image pipeline with enhanced cloud GPU memory management."""
-        # Remove conflicting kwargs for Qwen (define outside try block for scope)
+        """Create Qwen-Image pipeline - clean and simple implementation."""
+        # Remove conflicting kwargs for Qwen
         qwen_kwargs = kwargs.copy()
         qwen_kwargs.pop('safety_checker', None)
         qwen_kwargs.pop('requires_safety_checker', None)
@@ -570,234 +543,58 @@ class ModelManager:
         qwen_kwargs.pop('provider', None)
         
         try:
-            logger.info(f"🚀 Creating Qwen-Image pipeline for {model_info.name} on cloud GPU")
+            logger.info(f"Loading Qwen-Image pipeline: {model_info.name}")
             
-            # CRITICAL: Set CUDA environment variables for stability
-            import os
-            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True,max_split_size_mb:1024,roundup_power2_divisions:16'
-            os.environ['CUDA_LAUNCH_BLOCKING'] = '1'  # Prevent timeout issues
-            os.environ['TORCH_USE_CUDA_DSA'] = '1'   # Enable device-side assertions
-            
-            # Force ultra-aggressive memory cleanup first
-            logger.info("🧹 Performing ultra-aggressive memory cleanup...")
-            self.force_memory_cleanup()
-            
-            # Cloud GPU specific optimizations
+            # Determine optimal dtype and device
             if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
-                # Set optimized memory fraction for cloud GPUs (use 90% instead of 100%)
-                torch.cuda.set_per_process_memory_fraction(0.9)
-                
-                # Enable memory pool for better fragmentation handling
-                try:
-                    torch.cuda.memory._set_allocator_settings('expandable_segments:True')
-                except:
-                    pass  # Ignore if not available
-                
-                # Reset memory stats and synchronize
-                torch.cuda.reset_peak_memory_stats()
-                torch.cuda.synchronize()
-                
-                memory_before = torch.cuda.memory_allocated() / 1024**3
-                memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                memory_free = memory_total - memory_before
-                logger.info(f"📊 Cloud GPU Status: {memory_before:.2f}GB allocated, {memory_free:.2f}GB free of {memory_total:.2f}GB total")
-                
-                # Cloud GPU memory strategy (64GB GPU)
-                if memory_total >= 48.0:  # Cloud GPU with massive memory
-                    logger.info(f"🌩️  Detected cloud GPU with {memory_total:.0f}GB - using cloud-optimized loading")
-                    # For cloud GPUs, we can be more aggressive with memory usage
-                    required_free = min(16.0, memory_total * 0.25)  # Need 25% free or 16GB, whichever is less
+                # Use bfloat16 for Qwen-Image as recommended
+                if hasattr(torch, 'bfloat16'):
+                    qwen_dtype = torch.bfloat16
+                    logger.info("Using bfloat16 precision for Qwen-Image")
                 else:
-                    required_free = 12.0  # Standard requirement
-                
-                if memory_free < required_free:
-                    logger.warning(f"⚠️  Insufficient GPU memory ({memory_free:.2f}GB free). Qwen requires at least {required_free:.1f}GB.")
-                    # For cloud GPUs, try more aggressive cleanup first
-                    if memory_total >= 48.0:
-                        logger.info("🔧 Attempting additional cloud GPU memory optimization...")
-                        # Additional cloud GPU memory strategies
-                        self._cloud_gpu_memory_optimization()
-                        # Re-check memory after optimization
-                        memory_free = (memory_total - torch.cuda.memory_allocated() / 1024**3)
-                        logger.info(f"📊 After cloud optimization: {memory_free:.2f}GB free")
-                        if memory_free < required_free:
-                            raise RuntimeError("Memory insufficient even after cloud optimization")
-                    else:
-                        raise RuntimeError("Insufficient memory, using fallback strategies")
-            
-            # Cloud GPU optimized dtype selection
-            if TORCH_AVAILABLE and torch is not None:
-                # For cloud GPUs with massive memory, use bfloat16 for better performance
-                memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3 if torch.cuda.is_available() else 0
-                if memory_total >= 48.0 and hasattr(torch, 'bfloat16'):
-                    qwen_dtype = torch.bfloat16  # Cloud GPU can handle bfloat16
-                    logger.info("🎯 Using bfloat16 for cloud GPU performance")
-                else:
-                    qwen_dtype = torch.float16  # Fallback to float16
-                    logger.info("🎯 Using float16 for memory efficiency")
+                    qwen_dtype = torch.float16
+                    logger.info("Using float16 precision for Qwen-Image")
+                device = "cuda"
             else:
-                qwen_dtype = dtype
+                qwen_dtype = torch.float32
+                device = "cpu"
+                logger.info("Using CPU mode for Qwen-Image")
             
-            # Strategy 1: Cloud GPU optimized loading
-            logger.info("🎯 Strategy 1: Cloud GPU optimized loading")
-            try:
-                pipeline = DiffusionPipeline.from_pretrained(
-                    model_info.model_id,
-                    torch_dtype=qwen_dtype,
-                    low_cpu_mem_usage=True,
-                    device_map="auto",  # Let accelerate decide optimal mapping
-                    max_memory={0: "20GB"},  # Reserve some memory for operations
-                    offload_folder="./offload_cache",  # Use disk cache if needed
-                    **qwen_kwargs
-                )
-                
-                # Enable sequential CPU offloading for memory efficiency
-                pipeline.enable_sequential_cpu_offload()
-                logger.info("✅ Qwen-Image pipeline created with cloud GPU optimization")
-                return pipeline
-                
-            except Exception as strategy1_error:
-                logger.warning(f"❌ Strategy 1 failed: {strategy1_error}")
-                
-                # Strategy 2: Balanced device mapping
-                logger.info("🎯 Strategy 2: Balanced device mapping")
-                try:
-                    self.force_memory_cleanup()  # Clean up before retry
-                    
-                    pipeline = DiffusionPipeline.from_pretrained(
-                        model_info.model_id,
-                        torch_dtype=qwen_dtype,
-                        low_cpu_mem_usage=True,
-                        device_map="balanced",
-                        **qwen_kwargs
-                    )
-                    pipeline.enable_model_cpu_offload()
-                    logger.info("✅ Qwen pipeline created with balanced device mapping")
-                    return pipeline
-                    
-                except Exception as strategy2_error:
-                    logger.warning(f"❌ Strategy 2 failed: {strategy2_error}")
-                    
-                    # Strategy 3: Conservative loading with heavy CPU offloading
-                    logger.info("🎯 Strategy 3: Conservative loading with heavy CPU offloading")
-                    try:
-                        self.force_memory_cleanup()  # Clean up before retry
-                        
-                        # Use float16 for maximum memory efficiency
-                        conservative_dtype = torch.float16 if (TORCH_AVAILABLE and torch is not None) else dtype
-                        
-                        pipeline = DiffusionPipeline.from_pretrained(
-                            model_info.model_id,
-                            torch_dtype=conservative_dtype,
-                            low_cpu_mem_usage=True,
-                            device_map={"":"cuda:0"},  # Explicitly map to GPU 0
-                            max_memory={0: "15GB"},  # Very conservative memory limit
-                            **qwen_kwargs
-                        )
-                        
-                        # Enable aggressive CPU offloading
-                        pipeline.enable_sequential_cpu_offload()
-                        logger.info("✅ Qwen pipeline created with conservative loading")
-                        return pipeline
-                        
-                    except Exception as strategy3_error:
-                        logger.error(f"❌ Strategy 3 failed: {strategy3_error}")
-                        raise strategy3_error  # Re-raise to trigger CPU fallback
+            # Clean memory before loading
+            if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
+                clear_gpu_cache()
+            
+            # Load the pipeline with optimal settings
+            pipeline = DiffusionPipeline.from_pretrained(
+                model_info.model_id,
+                torch_dtype=qwen_dtype,
+                **qwen_kwargs
+            )
+            
+            # Move to device
+            pipeline = pipeline.to(device)
+            
+            logger.info(f"✅ Qwen-Image pipeline loaded successfully on {device}")
+            return pipeline
             
         except Exception as e:
-            logger.error(f"❌ Failed to create Qwen-Image pipeline: {e}")
+            logger.error(f"Failed to create Qwen-Image pipeline: {e}")
             
-            # Check for specific error types
+            # Provide helpful error messages
             error_str = str(e).lower()
+            if 'out of memory' in error_str:
+                logger.error("� GPU out of memory. Try:")
+                logger.error("   1. Close other applications using GPU")
+                logger.error("   2. Use CPU mode (slower)")
+                logger.error("   3. Restart Python session")
+            elif 'connection' in error_str or 'network' in error_str:
+                logger.error("💡 Network error. Check internet connection and try again.")
+            elif 'permission' in error_str or 'access' in error_str:
+                logger.error("💡 Access denied. You may need to:")
+                logger.error("   1. Accept the model license on Hugging Face")
+                logger.error("   2. Login with: huggingface-cli login")
             
-            # Handle CUDA timeout specifically
-            if 'timeout' in error_str or 'launch timed out' in error_str:
-                logger.error("🚨 CUDA launch timeout detected. This indicates GPU driver issues.")
-                logger.error("💡 Solutions:")
-                logger.error("   1. Set CUDA_LAUNCH_BLOCKING=1 (already set)")
-                logger.error("   2. Restart the Python process")
-                logger.error("   3. Check GPU driver status")
-                logger.error("   4. Reduce memory allocation")
-                
-                # Try one more time with CPU-only as absolute fallback
-                logger.info("🆘 Final attempt: CPU-only mode")
-                try:
-                    self.force_memory_cleanup()
-                    cpu_dtype = torch.float32 if (TORCH_AVAILABLE and torch is not None) else "float32"
-                    pipeline = DiffusionPipeline.from_pretrained(
-                        model_info.model_id,
-                        torch_dtype=cpu_dtype,
-                        device_map="cpu",
-                        low_cpu_mem_usage=True,
-                        **qwen_kwargs
-                    )
-                    logger.info("✅ Qwen pipeline created on CPU (slower but stable)")
-                    return pipeline
-                except Exception as final_error:
-                    logger.error(f"❌ Final CPU attempt failed: {final_error}")
-            
-            # Handle general memory errors
-            elif 'out of memory' in error_str or 'memory' in error_str:
-                logger.error("🧠 Memory error detected. GPU memory management needed.")
-                logger.error("💡 Recommendations:")
-                logger.error("   1. Restart Python session to clear memory fragmentation")
-                logger.error("   2. Close other GPU applications")
-                logger.error("   3. Use smaller models (SDXL/SD15)")
-                logger.error("   4. Enable swap memory if available")
-            
-            logger.error("❌ Qwen model cannot be loaded. All strategies exhausted.")
             return None
-    
-    def _cloud_gpu_memory_optimization(self):
-        """Advanced memory optimization specifically for cloud GPUs."""
-        if not TORCH_AVAILABLE or torch is None or not torch.cuda.is_available():
-            return
-            
-        logger.info("🌩️  Applying cloud GPU memory optimizations...")
-        
-        try:
-            # Force multiple rounds of aggressive cleanup
-            for round_num in range(5):
-                logger.info(f"🧹 Cleanup round {round_num + 1}/5")
-                
-                # Garbage collection
-                import gc
-                for _ in range(3):
-                    gc.collect()
-                
-                # CUDA cleanup
-                torch.cuda.empty_cache()
-                torch.cuda.ipc_collect()
-                
-                # Additional PyTorch cleanup for cloud environments
-                if hasattr(torch.cuda, 'reset_accumulated_memory_stats'):
-                    torch.cuda.reset_accumulated_memory_stats()
-                if hasattr(torch.cuda, 'reset_peak_memory_stats'):
-                    torch.cuda.reset_peak_memory_stats()
-                
-                # Synchronize to ensure cleanup completes
-                torch.cuda.synchronize()
-                
-                # Brief pause for system to process
-                import time
-                time.sleep(0.2)
-            
-            # Set cloud-specific memory configurations
-            try:
-                # Set memory pool configuration for cloud GPUs
-                torch.cuda.set_per_process_memory_fraction(0.85)  # Use 85% to leave buffer
-                logger.info("💾 Set cloud GPU memory fraction to 85%")
-            except Exception as frac_error:
-                logger.warning(f"Could not set memory fraction: {frac_error}")
-            
-            # Log final memory state
-            memory_allocated = torch.cuda.memory_allocated() / 1024**3
-            memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            memory_free = memory_total - memory_allocated
-            logger.info(f"🌩️  Cloud GPU optimization complete: {memory_free:.2f}GB free of {memory_total:.2f}GB")
-            
-        except Exception as opt_error:
-            logger.warning(f"Cloud GPU optimization failed: {opt_error}")
     
     def _get_scheduler(self, scheduler_name: str, config):
         """Get scheduler by name."""
@@ -836,16 +633,9 @@ class ModelManager:
                 logger.info("FLUX optimizations applied")
                 return
             
-            # Qwen models need specific optimizations
+            # Qwen models need minimal optimizations (already optimized in creation)
             if model_info.model_type == ModelType.QWEN:
-                # Enable CPU offloading for Qwen (recommended for memory efficiency)
-                try:
-                    pipeline.enable_model_cpu_offload()
-                    logger.info("Qwen: Model CPU offloading enabled")
-                except Exception as e:
-                    logger.warning(f"Failed to enable CPU offloading for Qwen: {e}")
-                
-                logger.info("Qwen optimizations applied")
+                logger.info("Qwen-Image: Using optimized configuration")
                 return
             
             # Enable attention slicing for memory efficiency

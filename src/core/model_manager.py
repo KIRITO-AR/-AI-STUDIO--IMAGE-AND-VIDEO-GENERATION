@@ -214,6 +214,52 @@ class ModelManager:
                 supports_video=False,
                 supports_controlnet=False,
                 description="Fast version of FLUX with excellent quality (requires 16GB+ VRAM)"
+            ),
+            # New powerful models
+            "sd3_medium": ModelInfo(
+                name="Stable Diffusion 3 Medium",
+                model_type=ModelType.STABLE_DIFFUSION_XL,
+                model_id="stabilityai/stable-diffusion-3-medium",
+                memory_requirement=12000,
+                supports_video=False,
+                supports_controlnet=True,
+                description="Latest Stable Diffusion 3 model with improved quality and efficiency (requires 12GB+ VRAM)"
+            ),
+            "sd3_5_large": ModelInfo(
+                name="Stable Diffusion 3.5 Large",
+                model_type=ModelType.STABLE_DIFFUSION_XL,
+                model_id="stabilityai/stable-diffusion-3.5-large",
+                memory_requirement=24000,
+                supports_video=False,
+                supports_controlnet=True,
+                description="Most powerful Stable Diffusion 3.5 model with exceptional quality (requires 24GB+ VRAM)"
+            ),
+            "hunyuan_dit": ModelInfo(
+                name="Hunyuan DiT",
+                model_type=ModelType.CUSTOM,
+                model_id="Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers",
+                memory_requirement=24000,
+                supports_video=False,
+                supports_controlnet=False,
+                description="Tencent's state-of-the-art DiT architecture model with multilingual support (requires 24GB+ VRAM)"
+            ),
+            "pixart_alpha": ModelInfo(
+                name="PixArt-Alpha",
+                model_type=ModelType.CUSTOM,
+                model_id="PixArt-alpha/PixArt-XL-2-1024-MS",
+                memory_requirement=12000,
+                supports_video=False,
+                supports_controlnet=False,
+                description="Highly efficient transformer-based model with excellent image quality (requires 12GB+ VRAM)"
+            ),
+            "kolors": ModelInfo(
+                name="Kolors",
+                model_type=ModelType.CUSTOM,
+                model_id="Kwai-Kolors/Kolors-diffusers",
+                memory_requirement=24000,
+                supports_video=False,
+                supports_controlnet=False,
+                description="Bytedance's advanced text-to-image model with multilingual support (requires 24GB+ VRAM)"
             )
         }
     
@@ -283,14 +329,14 @@ class ModelManager:
                     ]
                 }
             elif model_info.model_type == ModelType.CUSTOM:
-                # FLUX and other custom models need more memory
+                # CUSTOM models like Bytedance Kolors, PixArt, etc. need more memory
                 return {
                     "compatible": False,
                     "reason": f"Advanced models require more memory. Required: {required_memory}MB, Available: {available_memory}MB",
                     "recommendations": [
                         "Use Stable Diffusion 1.5 instead",
-                        "Consider cloud GPU instances",
-                        "Upgrade to higher VRAM GPU"
+                        "Consider cloud GPU instances with 24GB+ VRAM",
+                        "Upgrade to RTX 4090 or similar high-end GPU"
                     ]
                 }
             elif model_info.model_type == ModelType.FLUX:
@@ -412,6 +458,9 @@ class ModelManager:
             elif model_info.model_type == ModelType.FLUX:
                 # FLUX models use FluxPipeline
                 pipeline = self._create_flux_pipeline(model_info, dtype, **kwargs)
+            elif model_info.model_type == ModelType.CUSTOM:
+                # CUSTOM models like Bytedance Kolors, PixArt, etc. use DiffusionPipeline
+                pipeline = self._create_custom_pipeline(model_info, dtype, **kwargs)
             else:
                 # Standard Stable Diffusion
                 pipeline = StableDiffusionPipeline.from_pretrained(  # type: ignore
@@ -507,6 +556,39 @@ class ModelManager:
                 logger.error("2. Request access to the FLUX model repository")
                 logger.error("3. Install and configure huggingface-hub: pip install huggingface-hub")
                 logger.error("4. Login with: huggingface-cli login")
+            return None
+    
+    def _create_custom_pipeline(self, model_info: ModelInfo, dtype, **kwargs):
+        """Create CUSTOM pipeline for models like Bytedance Kolors, PixArt, etc.."""
+        try:
+            logger.info(f"Creating CUSTOM pipeline for {model_info.name}")
+            
+            # Remove conflicting kwargs for CUSTOM models
+            custom_kwargs = kwargs.copy()
+            custom_kwargs.pop('safety_checker', None)
+            custom_kwargs.pop('requires_safety_checker', None)
+            custom_kwargs.pop('use_onnx', None)
+            custom_kwargs.pop('provider', None)
+            
+            # Use appropriate dtype for CUSTOM models
+            if TORCH_AVAILABLE and torch is not None and hasattr(torch, 'bfloat16'):
+                custom_dtype = torch.bfloat16
+            else:
+                custom_dtype = dtype
+            
+            # Create CUSTOM pipeline using DiffusionPipeline
+            from diffusers import DiffusionPipeline
+            pipeline = DiffusionPipeline.from_pretrained(
+                model_info.model_id,
+                torch_dtype=custom_dtype,
+                **custom_kwargs
+            )
+            
+            logger.info(f"CUSTOM pipeline created successfully for {model_info.name}")
+            return pipeline
+            
+        except Exception as e:
+            logger.error(f"Failed to create CUSTOM pipeline for {model_info.name}: {e}")
             return None
     
     def _get_scheduler(self, scheduler_name: str, config):
@@ -635,6 +717,8 @@ class ModelManager:
             ModelType.STABLE_DIFFUSION_XL: 4.0,
             ModelType.ANIMATEDIFF: 10.0,
             ModelType.FLUX: 6.0,  # FLUX models are slower but high quality
+            ModelType.CUSTOM: 5.0,  # CUSTOM models like Bytedance Kolors, PixArt, etc.
+        
         }
         
         base_time = base_times.get(self.current_model_info.model_type, 3.0)

@@ -108,7 +108,6 @@ class ModelType(Enum):
     STABLE_DIFFUSION_XL = "sdxl" 
     ANIMATEDIFF = "animatediff"
     FLUX = "flux"
-    QWEN = "qwen"
     CUSTOM = "custom"
 
 @dataclass
@@ -215,15 +214,6 @@ class ModelManager:
                 supports_video=False,
                 supports_controlnet=False,
                 description="Fast version of FLUX with excellent quality (requires 16GB+ VRAM)"
-            ),
-            "qwen_image": ModelInfo(
-                name="Qwen-Image",
-                model_type=ModelType.QWEN,
-                model_id="Qwen/Qwen-Image",
-                memory_requirement=8000,  # 8GB VRAM requirement
-                supports_video=False,
-                supports_controlnet=False,
-                description="High-quality image generation with multiple aspect ratios, multilingual support, and configurable resolution (8GB+ VRAM)"
             )
         }
     
@@ -312,17 +302,6 @@ class ModelManager:
                         "Use Stable Diffusion 1.5 instead",
                         "Consider cloud GPU instances with 16GB+ VRAM",
                         "Upgrade to RTX 4080/4090 or similar"
-                    ]
-                }
-            elif model_info.model_type == ModelType.QWEN:
-                # Qwen models need moderate memory
-                return {
-                    "compatible": False,
-                    "reason": f"Qwen-Image requires more memory. Required: {required_memory}MB, Available: {available_memory}MB",
-                    "recommendations": [
-                        "Use Stable Diffusion 1.5 instead",
-                        "Consider cloud GPU instances with 8GB+ VRAM",
-                        "Upgrade to RTX 3070/4060 or similar"
                     ]
                 }
         
@@ -433,9 +412,6 @@ class ModelManager:
             elif model_info.model_type == ModelType.FLUX:
                 # FLUX models use FluxPipeline
                 pipeline = self._create_flux_pipeline(model_info, dtype, **kwargs)
-            elif model_info.model_type == ModelType.QWEN:
-                # Qwen models use DiffusionPipeline
-                pipeline = self._create_qwen_pipeline(model_info, dtype, **kwargs)
             else:
                 # Standard Stable Diffusion
                 pipeline = StableDiffusionPipeline.from_pretrained(  # type: ignore
@@ -533,69 +509,6 @@ class ModelManager:
                 logger.error("4. Login with: huggingface-cli login")
             return None
     
-    def _create_qwen_pipeline(self, model_info: ModelInfo, dtype, **kwargs):
-        """Create Qwen-Image pipeline - clean and simple implementation."""
-        # Remove conflicting kwargs for Qwen
-        qwen_kwargs = kwargs.copy()
-        qwen_kwargs.pop('safety_checker', None)
-        qwen_kwargs.pop('requires_safety_checker', None)
-        qwen_kwargs.pop('use_onnx', None)
-        qwen_kwargs.pop('provider', None)
-        
-        try:
-            logger.info(f"Loading Qwen-Image pipeline: {model_info.name}")
-            
-            # Determine optimal dtype and device
-            if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
-                # Use bfloat16 for Qwen-Image as recommended
-                if hasattr(torch, 'bfloat16'):
-                    qwen_dtype = torch.bfloat16
-                    logger.info("Using bfloat16 precision for Qwen-Image")
-                else:
-                    qwen_dtype = torch.float16
-                    logger.info("Using float16 precision for Qwen-Image")
-                device = "cuda"
-            else:
-                qwen_dtype = torch.float32
-                device = "cpu"
-                logger.info("Using CPU mode for Qwen-Image")
-            
-            # Clean memory before loading
-            if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
-                clear_gpu_cache()
-            
-            # Load the pipeline with optimal settings
-            pipeline = DiffusionPipeline.from_pretrained(
-                model_info.model_id,
-                torch_dtype=qwen_dtype,
-                **qwen_kwargs
-            )
-            
-            # Move to device
-            pipeline = pipeline.to(device)
-            
-            logger.info(f"✅ Qwen-Image pipeline loaded successfully on {device}")
-            return pipeline
-            
-        except Exception as e:
-            logger.error(f"Failed to create Qwen-Image pipeline: {e}")
-            
-            # Provide helpful error messages
-            error_str = str(e).lower()
-            if 'out of memory' in error_str:
-                logger.error("� GPU out of memory. Try:")
-                logger.error("   1. Close other applications using GPU")
-                logger.error("   2. Use CPU mode (slower)")
-                logger.error("   3. Restart Python session")
-            elif 'connection' in error_str or 'network' in error_str:
-                logger.error("💡 Network error. Check internet connection and try again.")
-            elif 'permission' in error_str or 'access' in error_str:
-                logger.error("💡 Access denied. You may need to:")
-                logger.error("   1. Accept the model license on Hugging Face")
-                logger.error("   2. Login with: huggingface-cli login")
-            
-            return None
-    
     def _get_scheduler(self, scheduler_name: str, config):
         """Get scheduler by name."""
         schedulers = {
@@ -631,11 +544,6 @@ class ModelManager:
                 
                 # Don't apply some optimizations that might conflict with FLUX
                 logger.info("FLUX optimizations applied")
-                return
-            
-            # Qwen models need minimal optimizations (already optimized in creation)
-            if model_info.model_type == ModelType.QWEN:
-                logger.info("Qwen-Image: Using optimized configuration")
                 return
             
             # Enable attention slicing for memory efficiency
@@ -727,7 +635,6 @@ class ModelManager:
             ModelType.STABLE_DIFFUSION_XL: 4.0,
             ModelType.ANIMATEDIFF: 10.0,
             ModelType.FLUX: 6.0,  # FLUX models are slower but high quality
-            ModelType.QWEN: 5.0   # Qwen models are moderately fast
         }
         
         base_time = base_times.get(self.current_model_info.model_type, 3.0)

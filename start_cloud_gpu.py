@@ -1,215 +1,88 @@
 #!/usr/bin/env python3
 """
-Cloud GPU startup script for optimized Qwen model performance.
-Sets proper environment variables and runs diagnostics.
+Vultr Cloud GPU Startup Script for AI Generation Studio
+Optimized for 64GB VRAM cloud instances
 """
 
-import os
 import sys
-import logging
+import os
+import subprocess
 from pathlib import Path
 
-def setup_cloud_gpu_environment():
-    """Setup optimal environment variables for cloud GPU usage."""
-    print("🌟 Setting up Cloud GPU Environment for Qwen...")
-    
-    # CUDA Memory Management (optimized for cloud GPUs with 64GB)
-    cuda_config = {
-        'PYTORCH_CUDA_ALLOC_CONF': 'expandable_segments:True,max_split_size_mb:1024,roundup_power2_divisions:16',
-        'CUDA_LAUNCH_BLOCKING': '1',  # Prevent timeout issues
-        'TORCH_USE_CUDA_DSA': '1',    # Enable device-side assertions for debugging
-        'CUDA_DEVICE_ORDER': 'PCI_BUS_ID',  # Consistent device ordering
-        'CUDA_VISIBLE_DEVICES': '0',  # Use first GPU (adjust if needed)
-    }
-    
-    # PyTorch Optimizations
-    pytorch_config = {
-        'TORCH_CUDNN_BENCHMARK': '1',   # Enable cuDNN benchmark for better performance
-        'TORCH_BACKENDS_CUDNN_ENABLED': '1',  # Enable cuDNN
-        'OMP_NUM_THREADS': '8',         # Optimize CPU threads
-        'MKL_NUM_THREADS': '8',         # Intel MKL optimization
-    }
-    
-    # Disable ONNX to avoid DLL issues on Windows
-    onnx_config = {
-        'DIFFUSERS_DISABLE_ONNX': '1',
-        'DISABLE_ONNX': '1',
-    }
-    
-    # Apply all configurations
-    all_configs = {**cuda_config, **pytorch_config, **onnx_config}
-    
-    for key, value in all_configs.items():
-        os.environ[key] = value
-        print(f"✅ Set {key}={value}")
-    
-    print("🎯 Cloud GPU environment configured successfully!")
-    return True
-
-def check_python_environment():
-    """Check Python and package versions."""
-    print("\\n🐍 Checking Python Environment...")
-    
-    print(f"📍 Python Version: {sys.version}")
-    print(f"📍 Python Executable: {sys.executable}")
-    
-    # Check required packages
-    required_packages = [
-        'torch',
-        'diffusers', 
-        'transformers',
-        'accelerate',
-        'streamlit'
-    ]
-    
-    missing_packages = []
-    
-    for package in required_packages:
-        try:
-            __import__(package)
-            print(f"✅ {package} - installed")
-        except ImportError:
-            print(f"❌ {package} - missing")
-            missing_packages.append(package)
-    
-    if missing_packages:
-        print(f"\\n⚠️  Missing packages: {missing_packages}")
-        print("💡 Install with: pip install -r requirements.txt")
-        return False
-    
-    print("✅ All required packages are installed!")
-    return True
-
-def run_gpu_diagnostics():
-    """Run comprehensive GPU diagnostics."""
-    print("\\n🔧 Running GPU Diagnostics...")
-    
+def check_gpu():
+    """Check if GPU is available and display info."""
     try:
         import torch
-        
-        if not torch.cuda.is_available():
-            print("❌ CUDA not available!")
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            print(f"✅ GPU Detected: {gpu_name}")
+            print(f"✅ VRAM: {gpu_memory:.1f}GB")
+            
+            if gpu_memory >= 48:
+                print("🚀 Cloud GPU detected! Optimizing for high-performance generation...")
+                return True
+            elif gpu_memory >= 24:
+                print("⚡ High-end GPU detected! Enabling advanced models...")
+                return True
+            else:
+                print("💡 Standard GPU detected.")
+                return True
+        else:
+            print("❌ No CUDA GPU detected. Please check your setup.")
             return False
-        
-        device_count = torch.cuda.device_count()
-        print(f"🔢 CUDA devices: {device_count}")
-        
-        for i in range(device_count):
-            device_name = torch.cuda.get_device_name(i)
-            props = torch.cuda.get_device_properties(i)
-            total_memory = props.total_memory / 1024**3
-            
-            print(f"\\n🌟 GPU {i}: {device_name}")
-            print(f"  💾 Total Memory: {total_memory:.2f}GB")
-            print(f"  🔧 Compute Capability: {props.major}.{props.minor}")
-            print(f"  🔄 Multiprocessors: {props.multi_processor_count}")
-            
-            # Test basic CUDA operations
-            try:
-                # Create a small tensor to test GPU
-                test_tensor = torch.randn(100, 100, device=f'cuda:{i}')
-                result = torch.matmul(test_tensor, test_tensor.T)
-                torch.cuda.synchronize()
-                print(f"  ✅ Basic CUDA operations working")
-                
-                # Check memory
-                allocated = torch.cuda.memory_allocated(i) / 1024**3
-                cached = torch.cuda.memory_reserved(i) / 1024**3
-                free = total_memory - allocated
-                
-                print(f"  📊 Memory - Allocated: {allocated:.2f}GB, Cached: {cached:.2f}GB, Free: {free:.2f}GB")
-                
-                # Cloud GPU detection
-                if total_memory >= 48.0:
-                    print(f"  ☁️  CLOUD GPU DETECTED - Optimized for Qwen!")
-                elif total_memory >= 24.0:
-                    print(f"  🎮 HIGH-END GPU - Good for Qwen")
-                else:
-                    print(f"  🖥️  STANDARD GPU - May need optimization")
-                
-            except Exception as gpu_error:
-                print(f"  ❌ GPU test failed: {gpu_error}")
-                return False
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ GPU diagnostics failed: {e}")
+    except ImportError:
+        print("❌ PyTorch not installed. Please install requirements.")
         return False
 
-def test_model_loading():
-    """Test basic model manager functionality."""
-    print("\\n🎯 Testing Model Manager...")
-    
-    try:
-        # Add src to path
-        current_dir = Path(__file__).resolve().parent
-        src_dir = current_dir / 'src'
-        sys.path.insert(0, str(src_dir))
-        
-        from core.model_manager import ModelManager
-        
-        # Initialize model manager
-        model_manager = ModelManager()
-        print("✅ Model manager initialized")
-        
-        # Check Qwen compatibility
-        qwen_compat = model_manager.check_model_compatibility("qwen_image")
-        print(f"🔍 Qwen compatibility: {qwen_compat.get('compatible', False)}")
-        
-        if qwen_compat.get('compatible', False):
-            print("✅ Qwen is compatible with your GPU!")
-            print("💡 Recommendations:")
-            for rec in qwen_compat.get('recommendations', []):
-                print(f"  - {rec}")
-        else:
-            print(f"⚠️  Qwen compatibility issue: {qwen_compat.get('reason', 'Unknown')}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Model manager test failed: {e}")
-        return False
+def check_network_access():
+    """Check if the instance allows external access."""
+    print("\n🌐 Network Configuration:")
+    print("   Make sure your Vultr instance has:")
+    print("   - Port 8501 open in firewall")
+    print("   - Public IP accessible")
+    print("   - Security groups configured properly")
+
+def display_access_info():
+    """Display access information for the cloud instance."""
+    print("\n📡 Cloud GPU Access Information:")
+    print("   Local access: http://localhost:8501")
+    print("   Remote access: http://YOUR_VULTR_IP:8501")
+    print("   Replace YOUR_VULTR_IP with your actual Vultr instance IP")
 
 def main():
-    """Main startup sequence."""
-    print("🚀 Cloud GPU Startup Script for Qwen")
-    print("=" * 50)
+    """Main startup function."""
+    print("=" * 60)
+    print("🎨 AI Generation Studio - Vultr Cloud GPU Setup")
+    print("=" * 60)
     
-    steps = [
-        ("Environment Setup", setup_cloud_gpu_environment),
-        ("Python Environment Check", check_python_environment),
-        ("GPU Diagnostics", run_gpu_diagnostics),
-        ("Model Manager Test", test_model_loading)
-    ]
+    # Check GPU
+    if not check_gpu():
+        sys.exit(1)
     
-    all_passed = True
+    # Display network info
+    check_network_access()
     
-    for step_name, step_func in steps:
-        print(f"\\n▶️  {step_name}...")
-        try:
-            success = step_func()
-            if success:
-                print(f"✅ {step_name} completed successfully")
-            else:
-                print(f"❌ {step_name} failed")
-                all_passed = False
-        except Exception as e:
-            print(f"❌ {step_name} crashed: {e}")
-            all_passed = False
+    # Display access info
+    display_access_info()
     
-    print("\\n" + "=" * 50)
-    if all_passed:
-        print("🎉 CLOUD GPU SETUP COMPLETE!")
-        print("💡 Your cloud GPU is ready for Qwen model!")
-        print("\\n🚀 Next steps:")
-        print("  1. Run: python test_qwen_cloud.py")
-        print("  2. Or start Streamlit: streamlit run launch.py --server.address=0.0.0.0 --server.port=8501")
-    else:
-        print("⚠️  Setup incomplete. Check errors above.")
-        print("💡 Try restarting and running this script again.")
+    # Launch the application
+    print("\n🚀 Starting AI Generation Studio...")
+    print("   Press Ctrl+C to stop the application")
     
-    print("=" * 50)
+    try:
+        # Change to project directory
+        project_dir = Path(__file__).parent
+        os.chdir(project_dir)
+        
+        # Launch with streamlit
+        subprocess.run([sys.executable, "launch.py", "--streamlit"])
+        
+    except KeyboardInterrupt:
+        print("\n👋 Application stopped by user")
+    except Exception as e:
+        print(f"\n❌ Error starting application: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

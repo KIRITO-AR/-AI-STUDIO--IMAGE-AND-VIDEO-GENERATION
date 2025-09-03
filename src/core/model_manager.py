@@ -549,55 +549,56 @@ class ModelManager:
     
     def _create_qwen_pipeline(self, model_info: ModelInfo, dtype, **kwargs):
         """Create Qwen-Image pipeline."""
+        # Remove conflicting kwargs for Qwen (define outside try block for scope)
+        qwen_kwargs = kwargs.copy()
+        qwen_kwargs.pop('safety_checker', None)
+        qwen_kwargs.pop('requires_safety_checker', None)
+        qwen_kwargs.pop('use_onnx', None)
+        qwen_kwargs.pop('provider', None)
+        
         try:
             logger.info(f"Creating Qwen-Image pipeline for {model_info.name}")
             
-            # Clear GPU cache before loading Qwen model
-            clear_gpu_cache()
+            # CRITICAL: Force aggressive memory cleanup first
+            self.force_memory_cleanup()
             
             # Set PyTorch memory allocation configuration for fragmentation
             import os
-            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True,max_split_size_mb:512'
             
-            # Remove conflicting kwargs for Qwen (define outside try block for scope)
-            qwen_kwargs = kwargs.copy()
-            qwen_kwargs.pop('safety_checker', None)
-            qwen_kwargs.pop('requires_safety_checker', None)
-            qwen_kwargs.pop('use_onnx', None)
-            qwen_kwargs.pop('provider', None)
-            
-            # Use bfloat16 for Qwen as recommended for memory efficiency
-            if TORCH_AVAILABLE and torch is not None and hasattr(torch, 'bfloat16'):
-                qwen_dtype = torch.bfloat16
+            # Use float16 for Qwen to save memory (avoid bfloat16 for initial loading)
+            if TORCH_AVAILABLE and torch is not None:
+                qwen_dtype = torch.float16  # Use float16 instead of bfloat16 for memory efficiency
             else:
                 qwen_dtype = dtype
             
             # Check available memory before loading
             if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
+                # Reset memory stats to get accurate readings
+                torch.cuda.reset_peak_memory_stats()
                 memory_before = torch.cuda.memory_allocated() / 1024**3  # GB
-                memory_free = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated()) / 1024**3
-                logger.info(f"Memory before Qwen loading: {memory_before:.2f}GB allocated, {memory_free:.2f}GB free")
+                memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
+                memory_free = memory_total - memory_before
+                logger.info(f"Memory before Qwen loading: {memory_before:.2f}GB allocated, {memory_free:.2f}GB free of {memory_total:.2f}GB total")
                 
-                if memory_free < 8.0:  # Need at least 8GB for Qwen
-                    logger.warning(f"Low GPU memory ({memory_free:.2f}GB free). Attempting aggressive cleanup...")
-                    # Force garbage collection
-                    import gc
-                    gc.collect()
-                    clear_gpu_cache()
-                    # Check again
-                    memory_free = (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated()) / 1024**3
-                    logger.info(f"Memory after cleanup: {memory_free:.2f}GB free")
+                if memory_free < 12.0:  # Need at least 12GB for Qwen (reduced from 8GB)
+                    logger.warning(f"Insufficient GPU memory ({memory_free:.2f}GB free). Qwen requires at least 12GB. Using CPU offloading...")
+                    # Skip direct GPU loading, go straight to CPU offloading
+                    raise RuntimeError("Insufficient memory, using CPU offloading")
             
-            # Create Qwen pipeline using DiffusionPipeline with memory optimization
+            # Create Qwen pipeline using DiffusionPipeline with minimal memory footprint
+            logger.info("Loading Qwen with minimal memory settings...")
             pipeline = DiffusionPipeline.from_pretrained(  # type: ignore
                 model_info.model_id,
                 torch_dtype=qwen_dtype,
                 low_cpu_mem_usage=True,  # Enable low CPU memory usage
-                device_map="cuda",  # Use cuda instead of auto for Qwen
+                device_map="balanced",  # Use balanced instead of cuda for better memory management
                 **qwen_kwargs
             )
             
-            logger.info(f"Qwen-Image pipeline created successfully")
+            # Enable CPU offloading immediately after loading
+            pipeline.enable_model_cpu_offload()
+            logger.info(f"Qwen-Image pipeline created successfully with CPU offloading")
             return pipeline
             
         except Exception as e:
@@ -617,7 +618,7 @@ class ModelManager:
                     device_fallback_kwargs.pop('use_onnx', None)
                     device_fallback_kwargs.pop('provider', None)
                     
-                    qwen_dtype = torch.bfloat16 if (TORCH_AVAILABLE and torch is not None and hasattr(torch, 'bfloat16')) else dtype
+                    qwen_dtype = torch.float16 if (TORCH_AVAILABLE and torch is not None) else dtype
                     
                     pipeline = DiffusionPipeline.from_pretrained(
                         model_info.model_id,
@@ -626,44 +627,36 @@ class ModelManager:
                         device_map="balanced",  # Use balanced strategy
                         **device_fallback_kwargs
                     )
+                    pipeline.enable_model_cpu_offload()
                     logger.info("Qwen pipeline created with 'balanced' device mapping")
                     return pipeline
                 except Exception as device_fallback_error:
                     logger.error(f"Device mapping fallback failed: {device_fallback_error}")
             
-            # Check if this is a CUDA out of memory error
-            elif 'CUDA out of memory' in str(e):
-                logger.error("CUDA out of memory detected. Suggestions:")
-                logger.error("1. Unload other models first before loading Qwen")
-                logger.error("2. Use CPU offloading: enable_model_cpu_offload()")
-                logger.error("3. Reduce batch size or image resolution")
-                logger.error("4. Set PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True")
+            # Handle CUDA out of memory errors or any other memory issue
+            logger.error("Memory error detected. Attempting CPU-only loading...")
+            try:
+                # Force complete cleanup
+                self.force_memory_cleanup()
                 
-                # Try to create with CPU offloading as fallback
-                try:
-                    logger.info("Attempting to create Qwen pipeline with CPU offloading...")
-                    # Use float16 to save memory, with proper None check
-                    fallback_dtype = torch.float16 if (TORCH_AVAILABLE and torch is not None) else dtype
-                    # Re-initialize qwen_kwargs for fallback in case it wasn't defined
-                    fallback_qwen_kwargs = kwargs.copy()
-                    fallback_qwen_kwargs.pop('safety_checker', None)
-                    fallback_qwen_kwargs.pop('requires_safety_checker', None)
-                    fallback_qwen_kwargs.pop('use_onnx', None)
-                    fallback_qwen_kwargs.pop('provider', None)
-                    
-                    pipeline = DiffusionPipeline.from_pretrained(
-                        model_info.model_id,
-                        torch_dtype=fallback_dtype,
-                        low_cpu_mem_usage=True,
-                        device_map="balanced",  # Use balanced for CPU offloading scenario
-                        **fallback_qwen_kwargs
-                    )
-                    # Enable CPU offloading immediately
-                    pipeline.enable_model_cpu_offload()
-                    logger.info("Qwen pipeline created with CPU offloading")
-                    return pipeline
-                except Exception as fallback_error:
-                    logger.error(f"CPU offloading fallback also failed: {fallback_error}")
+                # Use CPU-only approach
+                logger.info("Attempting CPU-only Qwen pipeline creation...")
+                cpu_dtype = torch.float32 if (TORCH_AVAILABLE and torch is not None) else "float32"
+                pipeline = DiffusionPipeline.from_pretrained(
+                    model_info.model_id,
+                    torch_dtype=cpu_dtype,  # Use float32 for CPU
+                    device_map="cpu",  # Force CPU only
+                    low_cpu_mem_usage=True,
+                    **qwen_kwargs
+                )
+                logger.info("Qwen pipeline created on CPU (slower but stable)")
+                return pipeline
+            except Exception as cpu_fallback_error:
+                logger.error(f"CPU fallback also failed: {cpu_fallback_error}")
+                logger.error("Qwen model cannot be loaded. Suggestions:")
+                logger.error("1. Use SDXL or SD15 models instead")
+                logger.error("2. Restart Python to clear all memory")
+                logger.error("3. Check if other processes are using GPU memory")
             
             return None
     
@@ -850,27 +843,55 @@ class ModelManager:
         
         # Set PyTorch memory allocation configuration
         import os
-        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-        
-        # Multiple rounds of garbage collection and cache clearing
-        import gc
-        for i in range(5):
-            gc.collect()
-            clear_gpu_cache()
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True,max_split_size_mb:512'
         
         if TORCH_AVAILABLE and torch is not None and torch.cuda.is_available():
-            # Try to empty the cache
-            torch.cuda.empty_cache()
+            # Get initial memory stats
+            initial_allocated = torch.cuda.memory_allocated() / 1024**3
+            initial_reserved = torch.cuda.memory_reserved() / 1024**3
+            logger.info(f"Before cleanup - Allocated: {initial_allocated:.2f}GB, Reserved: {initial_reserved:.2f}GB")
+            
+            # Multiple rounds of aggressive cleanup
+            for i in range(10):  # Increased from 5 to 10 rounds
+                # Force garbage collection
+                import gc
+                gc.collect()
+                
+                # Clear GPU cache
+                clear_gpu_cache()
+                
+                # Additional PyTorch cleanup
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+                
+                # Short delay to allow cleanup to complete
+                import time
+                time.sleep(0.1)
+            
+            # Reset memory statistics
+            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.reset_accumulated_memory_stats()
+            
+            # Final synchronization
             torch.cuda.synchronize()
             
-            # Reset peak memory stats
-            torch.cuda.reset_peak_memory_stats()
-            
             # Log final memory status
-            memory_allocated = torch.cuda.memory_allocated() / 1024**3  # GB
-            memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
-            memory_free = memory_total - memory_allocated
-            logger.info(f"After aggressive cleanup: {memory_allocated:.2f}GB allocated, {memory_free:.2f}GB free")
+            final_allocated = torch.cuda.memory_allocated() / 1024**3
+            final_reserved = torch.cuda.memory_reserved() / 1024**3
+            memory_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            memory_free = memory_total - final_allocated
+            
+            logger.info(f"After aggressive cleanup:")
+            logger.info(f"  - Allocated: {final_allocated:.2f}GB (was {initial_allocated:.2f}GB)")
+            logger.info(f"  - Reserved: {final_reserved:.2f}GB (was {initial_reserved:.2f}GB)")
+            logger.info(f"  - Free: {memory_free:.2f}GB of {memory_total:.2f}GB total")
+            logger.info(f"  - Freed: {initial_allocated - final_allocated:.2f}GB")
+        else:
+            # CPU-only cleanup
+            import gc
+            for i in range(10):
+                gc.collect()
+            logger.info("CPU-only memory cleanup completed")
 
 # Global model manager instance
 _model_manager = None

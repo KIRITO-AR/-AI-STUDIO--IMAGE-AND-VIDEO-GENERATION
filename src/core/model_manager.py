@@ -593,7 +593,7 @@ class ModelManager:
                 model_info.model_id,
                 torch_dtype=qwen_dtype,
                 low_cpu_mem_usage=True,  # Enable low CPU memory usage
-                device_map="auto",  # Automatic device mapping
+                device_map="cuda",  # Use cuda instead of auto for Qwen
                 **qwen_kwargs
             )
             
@@ -603,8 +603,36 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Failed to create Qwen-Image pipeline: {e}")
             
+            # Check for specific error types
+            error_str = str(e).lower()
+            
+            # Handle device mapping errors
+            if 'auto not supported' in error_str or 'supported strategies' in error_str:
+                logger.error("Device mapping error detected. Trying with 'balanced' strategy...")
+                try:
+                    # Re-initialize kwargs for device mapping fallback
+                    device_fallback_kwargs = kwargs.copy()
+                    device_fallback_kwargs.pop('safety_checker', None)
+                    device_fallback_kwargs.pop('requires_safety_checker', None)
+                    device_fallback_kwargs.pop('use_onnx', None)
+                    device_fallback_kwargs.pop('provider', None)
+                    
+                    qwen_dtype = torch.bfloat16 if (TORCH_AVAILABLE and torch is not None and hasattr(torch, 'bfloat16')) else dtype
+                    
+                    pipeline = DiffusionPipeline.from_pretrained(
+                        model_info.model_id,
+                        torch_dtype=qwen_dtype,
+                        low_cpu_mem_usage=True,
+                        device_map="balanced",  # Use balanced strategy
+                        **device_fallback_kwargs
+                    )
+                    logger.info("Qwen pipeline created with 'balanced' device mapping")
+                    return pipeline
+                except Exception as device_fallback_error:
+                    logger.error(f"Device mapping fallback failed: {device_fallback_error}")
+            
             # Check if this is a CUDA out of memory error
-            if 'CUDA out of memory' in str(e):
+            elif 'CUDA out of memory' in str(e):
                 logger.error("CUDA out of memory detected. Suggestions:")
                 logger.error("1. Unload other models first before loading Qwen")
                 logger.error("2. Use CPU offloading: enable_model_cpu_offload()")
@@ -627,7 +655,7 @@ class ModelManager:
                         model_info.model_id,
                         torch_dtype=fallback_dtype,
                         low_cpu_mem_usage=True,
-                        device_map="auto",
+                        device_map="balanced",  # Use balanced for CPU offloading scenario
                         **fallback_qwen_kwargs
                     )
                     # Enable CPU offloading immediately

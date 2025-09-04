@@ -135,48 +135,72 @@ def model_selection_sidebar():
     """Model selection and management in sidebar."""
     st.sidebar.header("🤖 Model Selection")
     
-    # Get available models
+    # Get available models and group by type
     available_models = st.session_state.model_manager.list_models()
-    model_names = {model.name: model for model in available_models}
+    
+    # Separate models by type
+    image_models = [model for model in available_models if not model.supports_video]
+    video_models = [model for model in available_models if model.supports_video]
+    
+    # Model type selection
+    model_type = st.sidebar.radio(
+        "Model Type",
+        ["Image Models", "Video Models"],
+        key="model_type_selection"
+    )
+    
+    # Select models based on type
+    if model_type == "Image Models":
+        models_to_show = image_models
+        st.sidebar.info("🖼️ Image generation models")
+    else:
+        models_to_show = video_models
+        st.sidebar.info("🎬 Video generation models")
+    
+    # Create model name to model mapping
+    model_names = {model.name: model for model in models_to_show}
     
     # Current model
     current_model = st.session_state.model_manager.get_current_model()
     current_name = current_model.name if current_model else None
     
     # Model selection
-    selected_model_name = st.sidebar.selectbox(
-        "Choose Model",
-        options=list(model_names.keys()),
-        index=list(model_names.keys()).index(current_name) if current_name in model_names else 0
-    )
-    
-    selected_model = model_names[selected_model_name]
-    
-    # Model info
-    with st.sidebar.expander(f"ℹ️ {selected_model.name} Info"):
-        st.write(f"**Type:** {selected_model.model_type.value}")
-        st.write(f"**Memory Required:** {selected_model.memory_requirement}MB")
-        st.write(f"**Video Support:** {'✓' if selected_model.supports_video else '✗'}")
-        st.write(f"**Description:** {selected_model.description}")
-    
-    # Load model button
-    if st.sidebar.button("🔄 Load Model"):
-        if current_model and current_model.name == selected_model.name:
-            st.sidebar.success("Model already loaded!")
-        else:
-            with st.spinner(f"Loading {selected_model.name}..."):
-                # Find model key
-                model_key = None
-                for key, model in st.session_state.model_manager.available_models.items():
-                    if model.name == selected_model.name:
-                        model_key = key
-                        break
-                
-                if model_key and st.session_state.model_manager.load_model(model_key):
-                    st.sidebar.success(f"✓ {selected_model.name} loaded!")
-                    st.rerun()
-                else:
-                    st.sidebar.error("Failed to load model")
+    if models_to_show:
+        selected_model_name = st.sidebar.selectbox(
+            "Choose Model",
+            options=list(model_names.keys()),
+            index=list(model_names.keys()).index(current_name) if current_name in model_names else 0
+        )
+        
+        selected_model = model_names[selected_model_name]
+        
+        # Model info
+        with st.sidebar.expander(f"ℹ️ {selected_model.name} Info"):
+            st.write(f"**Type:** {selected_model.model_type.value}")
+            st.write(f"**Memory Required:** {selected_model.memory_requirement}MB")
+            st.write(f"**Video Support:** {'✓' if selected_model.supports_video else '✗'}")
+            st.write(f"**Description:** {selected_model.description}")
+        
+        # Load model button
+        if st.sidebar.button("🔄 Load Model"):
+            if current_model and current_model.name == selected_model.name:
+                st.sidebar.success("Model already loaded!")
+            else:
+                with st.spinner(f"Loading {selected_model.name}..."):
+                    # Find model key
+                    model_key = None
+                    for key, model in st.session_state.model_manager.available_models.items():
+                        if model.name == selected_model.name:
+                            model_key = key
+                            break
+                    
+                    if model_key and st.session_state.model_manager.load_model(model_key):
+                        st.sidebar.success(f"✓ {selected_model.name} loaded!")
+                        st.rerun()
+                    else:
+                        st.sidebar.error("Failed to load model")
+    else:
+        st.sidebar.warning(f"No {model_type.lower()} available")
 
 def generation_interface():
     """Main generation interface."""
@@ -192,32 +216,32 @@ def generation_interface():
         
         current_model = st.session_state.model_manager.get_current_model()
         
-        # Generation tabs
+        # Show model-specific interface
         if current_model.supports_video:
-            tab1, tab2, tab3 = st.tabs(["🖼️ Images", "🎬 Videos", "📝 Batch"])
+            # Video generation interface
+            st.subheader("🎬 Video Generation")
+            st.caption(f"Using: {current_model.name}")
+            
+            # Show model-specific tips
+            if "zeroscope" in current_model.model_id.lower():
+                st.info("💡 Zeroscope tip: For best results, use detailed prompts describing actions and scenes")
+            elif "modelscope" in current_model.model_id.lower():
+                st.info("💡 ModelScope tip: Works well with cinematic and storytelling prompts")
+            else:
+                st.info("💡 AnimateDiff tip: Great for animated scenes and character movements")
+            
+            generate_videos_tab()
         else:
-            tab1, tab3 = st.tabs(["🖼️ Images", "📝 Batch"])
-            tab2 = None
-        
-        # Image generation tab
-        with tab1:
+            # Image generation interface
+            st.subheader("🖼️ Image Generation")
+            st.caption(f"Using: {current_model.name}")
             generate_images_tab()
-        
-        # Video generation tab (if supported)
-        if tab2:
-            with tab2:
-                generate_videos_tab()
-        
-        # Batch generation tab
-        with tab3:
-            batch_generation_tab()
     
     with col2:
         display_generation_settings()
 
 def generate_images_tab():
     """Image generation interface."""
-    st.subheader("Image Generation")
     
     # Prompt input
     prompt = st.text_area(
@@ -244,7 +268,6 @@ def generate_images_tab():
 
 def generate_videos_tab():
     """Video generation interface."""
-    st.subheader("Video Generation")
     
     # Prompt input
     prompt = st.text_area(
@@ -292,16 +315,6 @@ def generate_videos_tab():
         if upscale_video:
             st.warning("⚠️ Video upscaling requires significant VRAM (12GB+ recommended)")
     
-    # Model-specific guidance
-    current_model = st.session_state.model_manager.get_current_model()
-    if current_model:
-        if "zeroscope" in current_model.model_id.lower():
-            st.info("💡 Zeroscope tip: For best results, use detailed prompts describing actions and scenes")
-        elif "modelscope" in current_model.model_id.lower():
-            st.info("💡 ModelScope tip: Works well with cinematic and storytelling prompts")
-        else:
-            st.info("💡 AnimateDiff tip: Great for animated scenes and character movements")
-    
     # Generation button
     if st.button("🎬 Generate Video", key="generate_video", use_container_width=True):
         if not prompt.strip():
@@ -312,7 +325,13 @@ def generate_videos_tab():
 
 def batch_generation_tab():
     """Batch generation interface."""
-    st.subheader("Batch Generation")
+    current_model = st.session_state.model_manager.get_current_model()
+    
+    if current_model and current_model.supports_video:
+        st.subheader("Batch Video Generation")
+        st.caption(f"Using: {current_model.name}")
+    else:
+        st.subheader("Batch Image Generation")
     
     prompts_text = st.text_area(
         "Prompts (one per line)",
@@ -681,13 +700,21 @@ def main():
     display_system_info()
     model_selection_sidebar()
     
-    # Main content
-    tab1, tab2 = st.tabs(["🎨 Generate", "📈 History"])
+    # Main content with separate tabs for Image and Video
+    tab1, tab2, tab3 = st.tabs(["✨ Generate", "📋 Batch", "📈 History"])
     
     with tab1:
         generation_interface()
     
     with tab2:
+        st.header("📝 Batch Generation")
+        # Check if model is loaded
+        if not st.session_state.model_manager.is_model_loaded():
+            st.warning("Please load a model first using the sidebar.")
+        else:
+            batch_generation_tab()
+    
+    with tab3:
         display_history()
 
 if __name__ == "__main__":

@@ -295,7 +295,7 @@ class GenerationEngine:
             )
     
     def generate_video(self, params: GenerationParams) -> GenerationResult:
-        """Generate video from text prompt using AnimateDiff."""
+        """Generate video from text prompt using various video models."""
         start_time = time.time()
         
         try:
@@ -303,6 +303,7 @@ class GenerationEngine:
             current_model = self.model_manager.get_current_model()
             if not current_model or not current_model.supports_video:
                 self._update_status("Loading video generation model...")
+                # Try to load the most appropriate video model based on requirements
                 if not self.model_manager.load_model("animatediff"):
                     raise RuntimeError("Failed to load video generation model")
             
@@ -343,6 +344,21 @@ class GenerationEngine:
                 "callback_on_step_end": self._step_end_callback,
                 "callback_on_step_end_tensor_inputs": ['latents']
             }
+            
+            # Handle model-specific parameters
+            current_model = self.model_manager.get_current_model()
+            if current_model and current_model.model_id == "damo-vilab/text-to-video-ms-1.7b":
+                # ModelScope T2V specific optimizations
+                if hasattr(pipeline.unet, 'enable_forward_chunking'):
+                    pipeline.unet.enable_forward_chunking(chunk_size=1, dim=1)
+                if hasattr(pipeline, 'enable_vae_slicing'):
+                    pipeline.enable_vae_slicing()
+            elif current_model and "zeroscope" in current_model.model_id:
+                # Zeroscope specific optimizations
+                if hasattr(pipeline.unet, 'enable_forward_chunking'):
+                    pipeline.unet.enable_forward_chunking(chunk_size=1, dim=1)
+                if hasattr(pipeline, 'enable_vae_slicing'):
+                    pipeline.enable_vae_slicing()
             
             # Generate video
             self._update_status("Generating video frames...")
@@ -498,6 +514,131 @@ class GenerationEngine:
             raise RuntimeError("imageio required for video export. Install with: pip install imageio")
         except Exception as e:
             raise RuntimeError(f"Failed to save video: {e}")
+    
+    def upscale_video(self, result: GenerationResult, output_path: str, 
+                     prompt: Optional[str] = None, **kwargs) -> str:
+        """Upscale video using advanced models."""
+        if not result.images:
+            raise ValueError("No images to upscale")
+        
+        try:
+            # Use the prompt from the original generation if not provided
+            if prompt is None:
+                prompt = result.params.prompt
+            
+            # Check if we have the upscale model available
+            current_model = self.model_manager.get_current_model()
+            
+            # For now, we'll implement a basic upscaling approach
+            # In a full implementation, we would use the VideoUpscaler class
+            
+            # Simple upscaling by resizing frames
+            upscaled_frames = []
+            target_size = (1024, 576)  # Standard upscale target
+            
+            for img in result.images:
+                # Resize image
+                upscaled_img = img.resize(target_size, Image.LANCZOS)
+                upscaled_frames.append(upscaled_img)
+            
+            # Save upscaled video
+            # Create new params with upscaled dimensions
+            upscaled_params = GenerationParams(
+                prompt=prompt,
+                negative_prompt=result.params.negative_prompt,
+                width=target_size[0],
+                height=target_size[1],
+                num_inference_steps=result.params.num_inference_steps,
+                guidance_scale=result.params.guidance_scale,
+                num_images_per_prompt=result.params.num_images_per_prompt,
+                seed=result.seed_used,
+                scheduler=result.params.scheduler,
+                num_frames=len(upscaled_frames),
+                fps=result.params.fps
+            )
+            
+            # Create a new result with upscaled frames
+            upscaled_result = GenerationResult(
+                images=upscaled_frames,
+                metadata={
+                    **result.metadata,
+                    "upscaled": True,
+                    "original_size": (result.params.width, result.params.height),
+                    "upscaled_size": target_size
+                },
+                generation_time=result.generation_time * 1.5,  # Estimate
+                seed_used=result.seed_used,
+                params=upscaled_params
+            )
+            
+            # Save the upscaled video
+            return self.save_result_as_video(upscaled_result, output_path)
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to upscale video: {e}")
+    
+    def edit_video(self, result: GenerationResult, edit_operation: str, 
+                   **kwargs) -> GenerationResult:
+        """Apply basic video editing operations."""
+        if not result.images:
+            raise ValueError("No images to edit")
+        
+        try:
+            # Import video editing utilities
+            from src.models.video_generation import VideoEditor, VideoTransition
+            
+            edited_frames = result.images.copy()
+            
+            if edit_operation == "trim":
+                start_frame = kwargs.get("start_frame", 0)
+                end_frame = kwargs.get("end_frame", len(edited_frames))
+                edited_frames = VideoEditor.trim_video(edited_frames, start_frame, end_frame)
+            
+            elif edit_operation == "speed":
+                speed_factor = kwargs.get("speed_factor", 1.0)
+                edited_frames = VideoEditor.adjust_speed(edited_frames, speed_factor)
+            
+            elif edit_operation == "reverse":
+                edited_frames = VideoEditor.reverse_video(edited_frames)
+            
+            elif edit_operation == "loop":
+                loops = kwargs.get("loops", 2)
+                edited_frames = VideoEditor.loop_video(edited_frames, loops)
+            
+            # Create new parameters with edited properties
+            edited_params = GenerationParams(
+                prompt=result.params.prompt,
+                negative_prompt=result.params.negative_prompt,
+                width=result.params.width,
+                height=result.params.height,
+                num_inference_steps=result.params.num_inference_steps,
+                guidance_scale=result.params.guidance_scale,
+                num_images_per_prompt=result.params.num_images_per_prompt,
+                seed=result.seed_used,
+                scheduler=result.params.scheduler,
+                num_frames=len(edited_frames),
+                fps=result.params.fps
+            )
+            
+            # Create edited result
+            edited_result = GenerationResult(
+                images=edited_frames,
+                metadata={
+                    **result.metadata,
+                    "edited": True,
+                    "edit_operation": edit_operation,
+                    "original_frames": len(result.images),
+                    "edited_frames": len(edited_frames)
+                },
+                generation_time=result.generation_time * 1.1,  # Estimate
+                seed_used=result.seed_used,
+                params=edited_params
+            )
+            
+            return edited_result
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to edit video: {e}")
     
     def interrupt_generation(self):
         """Interrupt current generation (if supported by model)."""

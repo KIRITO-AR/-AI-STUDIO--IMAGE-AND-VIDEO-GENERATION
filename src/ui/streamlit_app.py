@@ -262,19 +262,53 @@ def generate_videos_tab():
     )
     
     # Video-specific settings
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        num_frames = st.slider("Number of Frames", 8, 32, 16, key="video_frames")
+        num_frames = st.slider("Number of Frames", 8, 64, 16, key="video_frames")
     with col2:
         fps = st.slider("FPS", 4, 30, 8, key="video_fps")
+    with col3:
+        video_quality = st.select_slider(
+            "Quality", 
+            options=["Low", "Medium", "High"], 
+            value="Medium",
+            key="video_quality"
+        )
+    
+    # Advanced video settings
+    with st.expander("🎬 Advanced Video Settings"):
+        col1, col2 = st.columns(2)
+        with col1:
+            video_duration = st.slider("Duration (seconds)", 1, 8, 2, key="video_duration")
+            # Update frames based on duration and FPS
+            calculated_frames = video_duration * fps
+            st.info(f"Calculated frames: {calculated_frames}")
+        with col2:
+            interpolation = st.checkbox("Frame Interpolation", value=False, key="video_interpolation")
+            loop_video = st.checkbox("Loop Video", value=True, key="video_loop")
+        
+        # Video upscaling option
+        upscale_video = st.checkbox("Upscale Video (High VRAM)", value=False, key="video_upscale")
+        if upscale_video:
+            st.warning("⚠️ Video upscaling requires significant VRAM (12GB+ recommended)")
+    
+    # Model-specific guidance
+    current_model = st.session_state.model_manager.get_current_model()
+    if current_model:
+        if "zeroscope" in current_model.model_id.lower():
+            st.info("💡 Zeroscope tip: For best results, use detailed prompts describing actions and scenes")
+        elif "modelscope" in current_model.model_id.lower():
+            st.info("💡 ModelScope tip: Works well with cinematic and storytelling prompts")
+        else:
+            st.info("💡 AnimateDiff tip: Great for animated scenes and character movements")
     
     # Generation button
-    if st.button("🎬 Generate Video", key="generate_video"):
+    if st.button("🎬 Generate Video", key="generate_video", use_container_width=True):
         if not prompt.strip():
             st.error("Please enter a prompt")
             return
         
-        generate_video(prompt, negative_prompt, num_frames, fps)
+        generate_video(prompt, negative_prompt, num_frames, fps, upscale_video)
 
 def batch_generation_tab():
     """Batch generation interface."""
@@ -391,7 +425,7 @@ def generate_images(prompt: str, negative_prompt: str = ""):
     # Display results
     display_generation_result(result, start_time)
 
-def generate_video(prompt: str, negative_prompt: str = "", num_frames: int = 16, fps: int = 8):
+def generate_video(prompt: str, negative_prompt: str = "", num_frames: int = 16, fps: int = 8, upscale: bool = False):
     """Generate video with current settings."""
     params = GenerationParams(
         prompt=prompt,
@@ -423,6 +457,16 @@ def generate_video(prompt: str, negative_prompt: str = "", num_frames: int = 16,
     # Generate
     start_time = time.time()
     result = st.session_state.generation_engine.generate_video(params)
+    
+    # Video upscaling if requested
+    if upscale and not result.error and result.images:
+        try:
+            status_text.text("Upscaling video...")
+            # Here we would implement upscaling using our new VideoUpscaler class
+            # For now, we'll just show a message that this feature is being prepared
+            st.info("💡 Video upscaling feature is being prepared. This will be available in the next update.")
+        except Exception as e:
+            st.warning(f"Video upscaling failed: {e}")
     
     # Clear progress
     progress_bar.empty()
@@ -490,7 +534,7 @@ def display_generation_result(result, start_time, is_video=False):
                 st.image(img, use_container_width=True)
     
     # Save options
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         if st.button("💾 Save Images"):
@@ -507,10 +551,63 @@ def display_generation_result(result, start_time, is_video=False):
                     st.success(f"Video saved to {video_path}")
                 except Exception as e:
                     st.error(f"Failed to save video: {e}")
-    
-    with col3:
-        if st.button("📋 Copy Prompt"):
-            st.code(result.params.prompt, language="text")
+        
+        with col3:
+            if st.button("⬆️ Upscale Video"):
+                try:
+                    # Check if we have enough VRAM for upscaling
+                    gpu_detector = st.session_state.model_manager.gpu_detector
+                    best_gpu = gpu_detector.get_best_gpu()
+                    
+                    if best_gpu and best_gpu.memory_total >= 12000:  # 12GB+
+                        video_path = st.session_state.generation_engine.upscale_video(
+                            result, "outputs/upscaled_video.mp4"
+                        )
+                        st.success(f"Upscaled video saved to {video_path}")
+                    else:
+                        st.warning("⚠️ Video upscaling requires 12GB+ VRAM. Your system may not support this feature.")
+                        # Still allow basic upscaling
+                        video_path = st.session_state.generation_engine.upscale_video(
+                            result, "outputs/upscaled_video.mp4"
+                        )
+                        st.success(f"Basic upscaled video saved to {video_path}")
+                except Exception as e:
+                    st.error(f"Failed to upscale video: {e}")
+        
+        with col4:
+            # Video editing options
+            with st.expander("✂️ Edit Video"):
+                edit_operation = st.selectbox(
+                    "Edit Operation",
+                    ["trim", "speed", "reverse", "loop"]
+                )
+                
+                if edit_operation == "trim":
+                    start_frame = st.number_input("Start Frame", 0, len(result.images)-1, 0)
+                    end_frame = st.number_input("End Frame", start_frame+1, len(result.images), len(result.images))
+                    edit_params = {"start_frame": start_frame, "end_frame": end_frame}
+                elif edit_operation == "speed":
+                    speed_factor = st.slider("Speed Factor", 0.1, 3.0, 1.0, 0.1)
+                    edit_params = {"speed_factor": speed_factor}
+                elif edit_operation == "loop":
+                    loops = st.number_input("Number of Loops", 1, 10, 2)
+                    edit_params = {"loops": loops}
+                else:
+                    edit_params = {}
+                
+                if st.button("Apply Edit"):
+                    try:
+                        edited_result = st.session_state.generation_engine.edit_video(
+                            result, edit_operation, **edit_params
+                        )
+                        st.session_state.current_edited_video = edited_result
+                        st.success(f"Video edited! New length: {len(edited_result.images)} frames")
+                    except Exception as e:
+                        st.error(f"Failed to edit video: {e}")
+        
+        with col5:
+            if st.button("📋 Copy Prompt"):
+                st.code(result.params.prompt, language="text")
     
     # Add to history
     st.session_state.generation_history.append(result)

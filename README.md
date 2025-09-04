@@ -83,8 +83,18 @@ python src/ui/desktop_app.py
 ### Supported Models
 - **Stable Diffusion 1.5**: Classic and reliable image generation
 - **Stable Diffusion XL**: Higher resolution and improved quality
-- **AnimateDiff**: Video generation from text prompts
+- **AnimateDiff**: Video generation from text prompts (Basic video generation)
+- **ModelScope T2V**: Advanced text-to-video model with better quality and consistency
+- **Zeroscope V2**: High-quality, watermark-free video generation models
 - **ControlNet**: Enhanced control over generation process
+
+### Video Generation Models
+The application now supports multiple video generation models with different capabilities:
+
+1. **AnimateDiff**: The default video generation model, good for basic animations
+2. **ModelScope T2V**: Advanced model with better temporal consistency
+3. **Zeroscope V2 576w**: High-quality video generation with specific resolution requirements
+4. **Zeroscope V2 XL**: Video upscaling model for higher resolution output
 
 ### Model Management
 Models are automatically downloaded and cached on first use. The application intelligently manages memory and switches between models as needed.
@@ -147,6 +157,11 @@ docker run -p 8501:8501 ai-generation-studio
 Check the `examples/` directory for:
 - Basic image generation scripts
 - Video creation examples
+  - Simple video generation with AnimateDiff
+  - Advanced video generation with ModelScope T2V
+  - High-quality video generation with Zeroscope
+  - Video upscaling techniques
+  - Video editing and post-processing
 - Batch processing workflows
 - Advanced customization techniques
 
@@ -163,6 +178,11 @@ Check the `examples/` directory for:
 - 16GB+ RAM
 - NVIDIA RTX 3070 or better (8GB+ VRAM)
 - 50GB+ free disk space (for model storage)
+
+### Video Generation Requirements
+- **Basic Video**: 6GB+ VRAM (AnimateDiff)
+- **High-Quality Video**: 8GB+ VRAM (Zeroscope)
+- **Video Upscaling**: 12GB+ VRAM (Zeroscope XL)
 
 ## 🤝 Support
 

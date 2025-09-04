@@ -196,6 +196,34 @@ class ModelManager:
                 supports_controlnet=False,
                 description="Generate short video clips from text prompts (requires 6GB+ VRAM)"
             ),
+            # Advanced video models
+            "modelscope_t2v": ModelInfo(
+                name="ModelScope Text-to-Video",
+                model_type=ModelType.ANIMATEDIFF,  # Using same type for now
+                model_id="damo-vilab/text-to-video-ms-1.7b",
+                memory_requirement=7000,
+                supports_video=True,
+                supports_controlnet=False,
+                description="Advanced text-to-video model with better quality and consistency (requires 7GB+ VRAM)"
+            ),
+            "zeroscope_v2_576w": ModelInfo(
+                name="Zeroscope V2 576w",
+                model_type=ModelType.ANIMATEDIFF,  # Using same type for now
+                model_id="cerspense/zeroscope_v2_576w",
+                memory_requirement=8000,
+                supports_video=True,
+                supports_controlnet=False,
+                description="High-quality video generation model with watermark-free output (requires 8GB+ VRAM)"
+            ),
+            "zeroscope_v2_XL": ModelInfo(
+                name="Zeroscope V2 XL",
+                model_type=ModelType.ANIMATEDIFF,  # Using same type for now
+                model_id="cerspense/zeroscope_v2_XL",
+                memory_requirement=12000,
+                supports_video=True,
+                supports_controlnet=False,
+                description="High-resolution video upscaling model (requires 12GB+ VRAM)"
+            ),
             # Advanced models for cloud GPUs with high VRAM
             "flux_dev": ModelInfo(
                 name="FLUX.1-dev",
@@ -397,28 +425,225 @@ class ModelManager:
                 # Clear previous model
                 self._unload_current_model()
                 
-                # Load new model
-                logger.info(f"Loading model: {model_info.name}")
-                pipeline = self._create_pipeline(model_info, **kwargs)
-                
-                if pipeline is None:
-                    logger.error(f"Failed to create pipeline for {model_key}")
+                # Load new model based on model type
+                if model_info.model_type == ModelType.ANIMATEDIFF:
+                    success = self._load_animatediff_model(model_info, **kwargs)
+                elif model_info.model_type == ModelType.STABLE_DIFFUSION_1_5:
+                    success = self._load_stable_diffusion_model(model_info, **kwargs)
+                elif model_info.model_type == ModelType.STABLE_DIFFUSION_XL:
+                    success = self._load_sdxl_model(model_info, **kwargs)
+                elif model_info.model_type == ModelType.FLUX:
+                    success = self._load_flux_model(model_info, **kwargs)
+                elif model_info.model_type == ModelType.CUSTOM:
+                    success = self._load_custom_model(model_info, **kwargs)
+                else:
+                    logger.error(f"Unsupported model type: {model_info.model_type}")
                     return False
                 
-                # Apply optimizations
-                self._apply_optimizations(pipeline, model_info)
+                if success:
+                    self.current_model_info = model_info
+                    logger.info(f"Successfully loaded model: {model_info.name}")
+                else:
+                    logger.error(f"Failed to load model: {model_info.name}")
                 
-                # Cache the pipeline
-                self.current_pipeline = pipeline
-                self.current_model_info = model_info
-                self.model_cache[model_key] = pipeline
-                
-                logger.info(f"Successfully loaded model: {model_info.name}")
-                return True
+                return success
                 
             except Exception as e:
-                logger.error(f"Failed to load model {model_key}: {e}")
+                logger.error(f"Error loading model {model_key}: {e}")
                 return False
+    
+    def _load_animatediff_model(self, model_info: ModelInfo, **kwargs) -> bool:
+        """Load AnimateDiff model."""
+        try:
+            # Special handling for different video models
+            if model_info.model_id == "damo-vilab/text-to-video-ms-1.7b":
+                # ModelScope T2V
+                from diffusers import TextToVideoSDPipeline
+                pipeline_cls = TextToVideoSDPipeline
+            elif "zeroscope" in model_info.model_id:
+                # Zeroscope models
+                from diffusers import TextToVideoSDPipeline
+                pipeline_cls = TextToVideoSDPipeline
+            else:
+                # Default AnimateDiff
+                from diffusers import DiffusionPipeline
+                pipeline_cls = DiffusionPipeline
+            
+            logger.info(f"Loading AnimateDiff model: {model_info.name}")
+            
+            # Load pipeline
+            if model_info.local_path:
+                self.current_pipeline = pipeline_cls.from_pretrained(
+                    model_info.local_path,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            else:
+                self.current_pipeline = pipeline_cls.from_pretrained(
+                    model_info.model_id,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            
+            # Move to device
+            if torch.cuda.is_available():
+                self.current_pipeline = self.current_pipeline.to(self.device)
+            
+            # Enable optimizations
+            if hasattr(self.current_pipeline, 'enable_model_cpu_offload'):
+                self.current_pipeline.enable_model_cpu_offload()
+            
+            # Model-specific optimizations
+            if model_info.model_id == "damo-vilab/text-to-video-ms-1.7b":
+                # ModelScope T2V specific optimizations
+                if hasattr(self.current_pipeline.unet, 'enable_forward_chunking'):
+                    self.current_pipeline.unet.enable_forward_chunking(chunk_size=1, dim=1)
+                if hasattr(self.current_pipeline, 'enable_vae_slicing'):
+                    self.current_pipeline.enable_vae_slicing()
+            elif "zeroscope" in model_info.model_id:
+                # Zeroscope specific optimizations
+                if hasattr(self.current_pipeline.unet, 'enable_forward_chunking'):
+                    self.current_pipeline.unet.enable_forward_chunking(chunk_size=1, dim=1)
+                if hasattr(self.current_pipeline, 'enable_vae_slicing'):
+                    self.current_pipeline.enable_vae_slicing()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load AnimateDiff model {model_info.name}: {e}")
+            return False
+    
+    def _load_stable_diffusion_model(self, model_info: ModelInfo, **kwargs) -> bool:
+        """Load Stable Diffusion 1.5 model."""
+        try:
+            logger.info(f"Loading Stable Diffusion 1.5 model: {model_info.name}")
+            
+            # Load pipeline
+            if model_info.local_path:
+                self.current_pipeline = StableDiffusionPipeline.from_pretrained(
+                    model_info.local_path,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            else:
+                self.current_pipeline = StableDiffusionPipeline.from_pretrained(
+                    model_info.model_id,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            
+            # Move to device
+            if torch.cuda.is_available():
+                self.current_pipeline = self.current_pipeline.to(self.device)
+            
+            # Enable optimizations
+            if hasattr(self.current_pipeline, 'enable_model_cpu_offload'):
+                self.current_pipeline.enable_model_cpu_offload()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load Stable Diffusion 1.5 model {model_info.name}: {e}")
+            return False
+    
+    def _load_sdxl_model(self, model_info: ModelInfo, **kwargs) -> bool:
+        """Load Stable Diffusion XL model."""
+        try:
+            logger.info(f"Loading Stable Diffusion XL model: {model_info.name}")
+            
+            # Load pipeline
+            if model_info.local_path:
+                self.current_pipeline = StableDiffusionXLPipeline.from_pretrained(
+                    model_info.local_path,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            else:
+                self.current_pipeline = StableDiffusionXLPipeline.from_pretrained(
+                    model_info.model_id,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            
+            # Move to device
+            if torch.cuda.is_available():
+                self.current_pipeline = self.current_pipeline.to(self.device)
+            
+            # Enable optimizations
+            if hasattr(self.current_pipeline, 'enable_model_cpu_offload'):
+                self.current_pipeline.enable_model_cpu_offload()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load Stable Diffusion XL model {model_info.name}: {e}")
+            return False
+    
+    def _load_flux_model(self, model_info: ModelInfo, **kwargs) -> bool:
+        """Load FLUX model."""
+        try:
+            logger.info(f"Loading FLUX model: {model_info.name}")
+            
+            # Load pipeline
+            if model_info.local_path:
+                self.current_pipeline = FluxPipeline.from_pretrained(
+                    model_info.local_path,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            else:
+                self.current_pipeline = FluxPipeline.from_pretrained(
+                    model_info.model_id,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            
+            # Move to device
+            if torch.cuda.is_available():
+                self.current_pipeline = self.current_pipeline.to(self.device)
+            
+            # Enable optimizations
+            if hasattr(self.current_pipeline, 'enable_model_cpu_offload'):
+                self.current_pipeline.enable_model_cpu_offload()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load FLUX model {model_info.name}: {e}")
+            return False
+    
+    def _load_custom_model(self, model_info: ModelInfo, **kwargs) -> bool:
+        """Load custom model."""
+        try:
+            logger.info(f"Loading custom model: {model_info.name}")
+            
+            # Load pipeline
+            if model_info.local_path:
+                self.current_pipeline = DiffusionPipeline.from_pretrained(
+                    model_info.local_path,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            else:
+                self.current_pipeline = DiffusionPipeline.from_pretrained(
+                    model_info.model_id,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    **kwargs
+                )
+            
+            # Move to device
+            if torch.cuda.is_available():
+                self.current_pipeline = self.current_pipeline.to(self.device)
+            
+            # Enable optimizations
+            if hasattr(self.current_pipeline, 'enable_model_cpu_offload'):
+                self.current_pipeline.enable_model_cpu_offload()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load custom model {model_info.name}: {e}")
+            return False
     
     def _create_pipeline(self, model_info: ModelInfo, **kwargs) -> Optional[Any]:
         """Create a pipeline for the specified model."""

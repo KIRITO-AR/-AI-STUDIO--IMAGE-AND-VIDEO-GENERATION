@@ -54,7 +54,7 @@ git clone <repository-url>
 cd IMAGE-AND-VIDEO-GENERATION
 ```
 
-2. Create a virtual environment:
+2. Create a virtual environment (recommended):
 ```bash
 python -m venv venv
 venv\Scripts\activate  # Windows
@@ -65,6 +65,15 @@ venv\Scripts\activate  # Windows
 ```bash
 pip install -r requirements.txt
 ```
+
+**Note**: If you encounter import errors like "None of PyTorch, TensorFlow >= 2.0, or Flax have been found", make sure you're using the correct Python environment where the packages are installed. The virtual environment approach above ensures all dependencies are correctly installed and accessible.
+
+If you're using an MSYS2/MinGW environment, you may need to use:
+```bash
+python -m pip install -r requirements.txt
+```
+
+For more detailed troubleshooting, check the [SOLUTION_SUMMARY.md](SOLUTION_SUMMARY.md) and [FIX_INSTRUCTIONS.md](FIX_INSTRUCTIONS.md) files.
 
 ### Running the Application
 
@@ -190,6 +199,30 @@ For issues, questions, or contributions:
 - Open an issue on GitHub
 - Check the documentation in `docs/`
 - Review examples in `examples/`
+
+## 🛠️ Troubleshooting
+
+### Common Issues and Solutions
+
+**Import Errors ("None of PyTorch, TensorFlow >= 2.0, or Flax have been found")**
+- Make sure you're using the correct Python environment where packages are installed
+- Activate the virtual environment: `venv\Scripts\activate` (Windows) or `source venv/bin/activate` (Linux/Mac)
+- Check that packages are installed: `pip list | grep torch`
+
+**Python Version Mismatch**
+- Ensure `python` and `pip` are using the same Python version
+- Use `python -m pip` instead of `pip` to ensure version consistency
+
+**MSYS2/MinGW Environment Issues**
+- Create a virtual environment to avoid system package restrictions
+- Use `python -m pip install` instead of `pip install`
+
+**ONNX Runtime Errors on Windows**
+- The application already includes environment variables to disable ONNX
+- If issues persist, install Microsoft Visual C++ Redistributable
+- Alternatively, uninstall onnxruntime: `pip uninstall onnxruntime onnxruntime-gpu`
+
+For more detailed troubleshooting, check the [SOLUTION_SUMMARY.md](SOLUTION_SUMMARY.md) and [FIX_INSTRUCTIONS.md](FIX_INSTRUCTIONS.md) files.
 
 ## 📄 License
 

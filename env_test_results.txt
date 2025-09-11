@@ -1,0 +1,10 @@
+Environment Test Results
+==============================
+Python version: 3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]
+PyTorch: 2.8.0+cpu
+CUDA available: False
+Diffusers: 0.35.1
+Transformers: 4.56.1
+PIL: OK
+NumPy: OK
+Streamlit: OK

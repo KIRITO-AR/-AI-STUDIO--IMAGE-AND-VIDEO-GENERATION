@@ -217,10 +217,10 @@ def generation_interface():
         current_model = st.session_state.model_manager.get_current_model()
         
         # Show model-specific interface
-        if current_model.supports_video:
+        if current_model and current_model.supports_video:
             # Video generation interface
             st.subheader("🎬 Video Generation")
-            st.caption(f"Using: {current_model.name}")
+            st.caption(f"Using: {current_model.name if current_model else 'No model loaded'}")
             
             # Show model-specific tips
             if "zeroscope" in current_model.model_id.lower():
@@ -234,7 +234,7 @@ def generation_interface():
         else:
             # Image generation interface
             st.subheader("🖼️ Image Generation")
-            st.caption(f"Using: {current_model.name}")
+            st.caption(f"Using: {current_model.name if current_model else 'No model loaded'}")
             generate_images_tab()
     
     with col2:
@@ -329,9 +329,10 @@ def batch_generation_tab():
     
     if current_model and current_model.supports_video:
         st.subheader("Batch Video Generation")
-        st.caption(f"Using: {current_model.name}")
+        st.caption(f"Using: {current_model.name if current_model else 'No model loaded'}")
     else:
         st.subheader("Batch Image Generation")
+        st.caption(f"Using: {current_model.name if current_model else 'No model loaded'}")
     
     prompts_text = st.text_area(
         "Prompts (one per line)",

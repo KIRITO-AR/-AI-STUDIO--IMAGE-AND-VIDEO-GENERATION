@@ -46,6 +46,9 @@ def generate_basic_video():
     # Generate video
     result = generation_engine.generate_video(params)
     
+    if result is None:
+        print("❌ Video generation failed: result is None")
+        return
     if result.error:
         print(f"❌ Video generation failed: {result.error}")
         return
@@ -101,6 +104,9 @@ def generate_modelscope_video():
     # Generate video
     result = generation_engine.generate_video(params)
     
+    if result is None:
+        print("❌ Video generation failed: result is None")
+        return
     if result.error:
         print(f"❌ Video generation failed: {result.error}")
         return
@@ -156,6 +162,9 @@ def generate_zeroscope_video():
     # Generate video
     result = generation_engine.generate_video(params)
     
+    if result is None:
+        print("❌ Video generation failed: result is None")
+        return
     if result.error:
         print(f"❌ Video generation failed: {result.error}")
         return

@@ -122,9 +122,21 @@ def generate_qwen_image(
         )
         
         # Save the image
+        # Sanitize output_path to prevent path traversal
+        safe_output_path = Path(output_path).resolve()
+        allowed_base = Path(output_path).resolve().parent
+        # Recompute: resolve against cwd and ensure it stays within its own parent dir
+        safe_output_path = Path(os.path.normpath(output_path))
+        if safe_output_path.is_absolute():
+            resolved = safe_output_path.resolve()
+        else:
+            resolved = (Path.cwd() / safe_output_path).resolve()
+        expected_parent = resolved.parent
+        if '..' in Path(output_path).parts or not str(resolved).startswith(str(expected_parent)):
+            resolved = Path.cwd() / Path(output_path).name
         image = result.images[0]
-        image.save(output_path)
-        logger.info(f"Image saved to: {output_path}")
+        image.save(str(resolved))
+        logger.info(f"Image saved to: {resolved}")
         
         return True
         

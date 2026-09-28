@@ -49,7 +49,7 @@ def generate_basic_video():
     if result is None:
         print("❌ Video generation failed: result is None")
         return
-    if result.error:
+    if getattr(result, "error", None):
         print(f"❌ Video generation failed: {result.error}")
         return
     
@@ -62,7 +62,7 @@ def generate_basic_video():
             result, "outputs/examples/generated_video.mp4"
         )
         print(f"🎬 Video saved to: {video_path}")
-    except Exception as e:
+    except (OSError, IOError, RuntimeError, ValueError) as e:
         print(f"⚠️  Failed to save video file: {e}")
     
     print(f"✅ Video generation completed in {result.generation_time:.2f}s")
@@ -107,7 +107,7 @@ def generate_modelscope_video():
     if result is None:
         print("❌ Video generation failed: result is None")
         return
-    if result.error:
+    if getattr(result, "error", None):
         print(f"❌ Video generation failed: {result.error}")
         return
     
@@ -120,7 +120,7 @@ def generate_modelscope_video():
             result, "outputs/examples/modelscope_video.mp4"
         )
         print(f"🎬 Video saved to: {video_path}")
-    except Exception as e:
+    except (OSError, IOError, RuntimeError, ValueError) as e:
         print(f"⚠️  Failed to save video file: {e}")
     
     print(f"✅ Video generation completed in {result.generation_time:.2f}s")
@@ -165,7 +165,7 @@ def generate_zeroscope_video():
     if result is None:
         print("❌ Video generation failed: result is None")
         return
-    if result.error:
+    if getattr(result, "error", None):
         print(f"❌ Video generation failed: {result.error}")
         return
     
@@ -178,7 +178,7 @@ def generate_zeroscope_video():
             result, "outputs/examples/zeroscope_video.mp4"
         )
         print(f"🎬 Video saved to: {video_path}")
-    except Exception as e:
+    except (OSError, IOError, RuntimeError, ValueError) as e:
         print(f"⚠️  Failed to save video file: {e}")
     
     print(f"✅ Video generation completed in {result.generation_time:.2f}s")

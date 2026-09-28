@@ -9,6 +9,13 @@ from pathlib import Path
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
+# Default generation parameter constants
+DEFAULT_IMAGE_WIDTH = 512
+DEFAULT_IMAGE_HEIGHT = 512
+DEFAULT_NUM_INFERENCE_STEPS = 20
+DEFAULT_GUIDANCE_SCALE = 7.5
+DEFAULT_NUM_IMAGES_PER_PROMPT = 1
+
 from core import get_generation_engine, get_model_manager, GenerationParams
 
 def main():
@@ -41,11 +48,11 @@ def main():
     base_params = GenerationParams(
         prompt="",  # Will be set for each generation
         negative_prompt="blurry, low quality, deformed",
-        width=512,
-        height=512,
-        num_inference_steps=20,
-        guidance_scale=7.5,
-        num_images_per_prompt=1
+        width=DEFAULT_IMAGE_WIDTH,
+        height=DEFAULT_IMAGE_HEIGHT,
+        num_inference_steps=DEFAULT_NUM_INFERENCE_STEPS,
+        guidance_scale=DEFAULT_GUIDANCE_SCALE,
+        num_images_per_prompt=DEFAULT_NUM_IMAGES_PER_PROMPT
     )
     
     print(f"Starting batch generation for {len(prompts)} prompts...")

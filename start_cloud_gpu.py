@@ -4,6 +4,7 @@ Vultr Cloud GPU Startup Script for AI Generation Studio
 Optimized for 64GB VRAM cloud instances
 """
 
+import traceback
 import sys
 import os
 import subprocess
@@ -75,13 +76,28 @@ def main():
         project_dir = Path(__file__).parent
         os.chdir(project_dir)
         
-        # Launch with streamlit
-        subprocess.run([sys.executable, "launch.py", "--streamlit"])
+        # Launch with streamlit, ensuring the subprocess is properly managed
+        process = subprocess.Popen([sys.executable, "launch.py", "--streamlit"])
+        try:
+            process.wait()
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
         
     except KeyboardInterrupt:
         print("\n👋 Application stopped by user")
-    except Exception as e:
+    except subprocess.SubprocessError as e:
         print(f"\n❌ Error starting application: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+    except OSError as e:
+        print(f"\n❌ Error starting application: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -12,9 +12,10 @@ import time
 try:
     import torch
     TORCH_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     TORCH_AVAILABLE = False
     torch = None
+    logging.getLogger(__name__).warning(f"Failed to import torch: {e}")
 
 # Disable ONNX runtime to avoid DLL loading issues on Windows
 import os
@@ -35,6 +36,7 @@ try:
     DIFFUSERS_AVAILABLE = True
 except ImportError as e:
     DIFFUSERS_AVAILABLE = False
+    logging.getLogger(__name__).warning(f"Failed to import diffusers components: {e}")
     # Create dummy classes to prevent errors
     class DummyPipeline:
         @classmethod
@@ -55,10 +57,11 @@ except ImportError as e:
 try:
     from transformers import CLIPTextModel, CLIPTokenizer
     TRANSFORMERS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     TRANSFORMERS_AVAILABLE = False
     CLIPTextModel = None
     CLIPTokenizer = None
+    logging.getLogger(__name__).warning(f"Failed to import transformers: {e}")
 
 import sys
 import os
@@ -74,13 +77,15 @@ if __name__ != '__main__':
 try:
     from utils.gpu_utils import get_device_info, PerformanceMonitor
     from utils.config import get_config
-except ImportError:
+except ImportError as e:
     # Fallback for relative imports
+    logging.getLogger(__name__).info(f"Direct import of utils failed ({e}), trying relative import")
     try:
         from ..utils.gpu_utils import get_device_info, PerformanceMonitor
         from ..utils.config import get_config
-    except ImportError:
+    except ImportError as e2:
         # Last resort - direct path import
+        logging.getLogger(__name__).info(f"Relative import of utils failed ({e2}), trying direct path import")
         current_dir = Path(__file__).resolve().parent
         utils_dir = current_dir.parent / 'utils'
         sys.path.insert(0, str(utils_dir.parent))
@@ -511,6 +516,14 @@ class ModelManager:
             
         except Exception as e:
             logger.error(f"Failed to load AnimateDiff model {model_info.name}: {e}")
+            if self.current_pipeline is not None:
+                try:
+                    del self.current_pipeline
+                except Exception:
+                    pass
+                self.current_pipeline = None
+                gc.collect()
+                clear_gpu_cache()
             return False
     
     def _load_stable_diffusion_model(self, model_info: ModelInfo, **kwargs) -> bool:
@@ -544,6 +557,14 @@ class ModelManager:
             
         except Exception as e:
             logger.error(f"Failed to load Stable Diffusion 1.5 model {model_info.name}: {e}")
+            if self.current_pipeline is not None:
+                try:
+                    del self.current_pipeline
+                except Exception:
+                    pass
+                self.current_pipeline = None
+                gc.collect()
+                clear_gpu_cache()
             return False
     
     def _load_sdxl_model(self, model_info: ModelInfo, **kwargs) -> bool:
@@ -577,6 +598,14 @@ class ModelManager:
             
         except Exception as e:
             logger.error(f"Failed to load Stable Diffusion XL model {model_info.name}: {e}")
+            if self.current_pipeline is not None:
+                try:
+                    del self.current_pipeline
+                except Exception:
+                    pass
+                self.current_pipeline = None
+                gc.collect()
+                clear_gpu_cache()
             return False
     
     def _load_flux_model(self, model_info: ModelInfo, **kwargs) -> bool:
@@ -610,6 +639,14 @@ class ModelManager:
             
         except Exception as e:
             logger.error(f"Failed to load FLUX model {model_info.name}: {e}")
+            if self.current_pipeline is not None:
+                try:
+                    del self.current_pipeline
+                except Exception:
+                    pass
+                self.current_pipeline = None
+                gc.collect()
+                clear_gpu_cache()
             return False
     
     def _load_custom_model(self, model_info: ModelInfo, **kwargs) -> bool:
@@ -643,6 +680,14 @@ class ModelManager:
             
         except Exception as e:
             logger.error(f"Failed to load custom model {model_info.name}: {e}")
+            if self.current_pipeline is not None:
+                try:
+                    del self.current_pipeline
+                except Exception:
+                    pass
+                self.current_pipeline = None
+                gc.collect()
+                clear_gpu_cache()
             return False
     
     def _create_pipeline(self, model_info: ModelInfo, **kwargs) -> Optional[Any]:

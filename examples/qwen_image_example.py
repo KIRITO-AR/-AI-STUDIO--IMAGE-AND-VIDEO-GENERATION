@@ -35,15 +35,27 @@ POSITIVE_MAGIC = {
     "zh": ", 超清，4K，电影级构图."  # for chinese prompt
 }
 
+# Base resolution (pixels) used to derive aspect-ratio dimensions for Qwen-Image.
+# Qwen-Image is optimized for a total pixel budget of roughly 1328 x 1328.
+QWEN_IMAGE_BASE_RESOLUTION = 1328
+
+# Named pixel dimensions used to build the ASPECT_RATIOS table below.
+# Each pair corresponds to (width, height) for a given aspect ratio, chosen to
+# keep the total pixel count close to QWEN_IMAGE_BASE_RESOLUTION ** 2.
+SQUARE_DIM = QWEN_IMAGE_BASE_RESOLUTION  # 1328
+WIDE_DIM, TALL_DIM = 1664, 928  # 16:9 / 9:16
+STANDARD_WIDE_DIM, STANDARD_TALL_DIM = 1472, 1140  # 4:3 / 3:4
+PHOTO_WIDE_DIM, PHOTO_TALL_DIM = 1584, 1056  # 3:2 / 2:3
+
 # Supported aspect ratios for Qwen-Image
 ASPECT_RATIOS = {
-    "1:1": (1328, 1328),
-    "16:9": (1664, 928),
-    "9:16": (928, 1664),
-    "4:3": (1472, 1140),
-    "3:4": (1140, 1472),
-    "3:2": (1584, 1056),
-    "2:3": (1056, 1584),
+    "1:1": (SQUARE_DIM, SQUARE_DIM),
+    "16:9": (WIDE_DIM, TALL_DIM),
+    "9:16": (TALL_DIM, WIDE_DIM),
+    "4:3": (STANDARD_WIDE_DIM, STANDARD_TALL_DIM),
+    "3:4": (STANDARD_TALL_DIM, STANDARD_WIDE_DIM),
+    "3:2": (PHOTO_WIDE_DIM, PHOTO_TALL_DIM),
+    "2:3": (PHOTO_TALL_DIM, PHOTO_WIDE_DIM),
 }
 
 def generate_qwen_image(

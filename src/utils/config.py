@@ -102,15 +102,19 @@ class ConfigManager:
     def _load_config(self):
         """Load the configuration file."""
         try:
-            self.config.read(self.config_file)
+            with open(self.config_file, 'r') as f:
+                self.config.read_file(f)
             logger.info(f"Configuration loaded from {self.config_file}")
-        except Exception as e:
+        except (OSError, IOError, configparser.Error) as e:
             logger.error(f"Failed to load configuration: {e}")
+            raise
+        except Exception as e:
+            logger.exception(f"Unexpected error while loading configuration: {e}")
             raise
     
     def _load_model_config(self) -> ModelConfig:
         """Load model configuration."""
-        section = self.config['models']
+        section = self.config['models'] if self.config.has_section('models') else {}
         return ModelConfig(
             default_image_model=section.get('default_image_model', 'runwayml/stable-diffusion-v1-5'),
             default_video_model=section.get('default_video_model', 'guoyww/animatediff-motion-adapter-v1-5-2'),
@@ -120,7 +124,7 @@ class ConfigManager:
     
     def _load_generation_config(self) -> GenerationConfig:
         """Load generation configuration."""
-        section = self.config['generation']
+        section = self.config['generation'] if self.config.has_section('generation') else {}
         return GenerationConfig(
             default_steps=int(section.get('default_steps', '20')),
             default_guidance_scale=float(section.get('default_guidance_scale', '7.5')),
@@ -132,7 +136,7 @@ class ConfigManager:
     
     def _load_performance_config(self) -> PerformanceConfig:
         """Load performance configuration."""
-        section = self.config['performance']
+        section = self.config['performance'] if self.config.has_section('performance') else {}
         return PerformanceConfig(
             use_xformers=section.get('use_xformers', 'true').lower() == 'true',
             use_tensorrt=section.get('use_tensorrt', 'false').lower() == 'true',
@@ -143,7 +147,7 @@ class ConfigManager:
     
     def _load_ui_config(self) -> UIConfig:
         """Load UI configuration."""
-        section = self.config['ui']
+        section = self.config['ui'] if self.config.has_section('ui') else {}
         return UIConfig(
             theme=section.get('theme', 'dark'),
             show_advanced_options=section.get('show_advanced_options', 'false').lower() == 'true',
@@ -153,7 +157,7 @@ class ConfigManager:
     
     def _load_cloud_config(self) -> CloudConfig:
         """Load cloud configuration."""
-        section = self.config['cloud']
+        section = self.config['cloud'] if self.config.has_section('cloud') else {}
         return CloudConfig(
             enable_cloud_gpu=section.get('enable_cloud_gpu', 'false').lower() == 'true',
             preferred_provider=section.get('preferred_provider', 'aws'),
@@ -162,7 +166,7 @@ class ConfigManager:
     
     def _load_logging_config(self) -> LoggingConfig:
         """Load logging configuration."""
-        section = self.config['logging']
+        section = self.config['logging'] if self.config.has_section('logging') else {}
         return LoggingConfig(
             log_level=section.get('log_level', 'INFO'),
             log_file=section.get('log_file', './logs/app.log'),
@@ -171,7 +175,7 @@ class ConfigManager:
     
     def _load_security_config(self) -> SecurityConfig:
         """Load security configuration."""
-        section = self.config['security']
+        section = self.config['security'] if self.config.has_section('security') else {}
         return SecurityConfig(
             allow_remote_access=section.get('allow_remote_access', 'false').lower() == 'true',
             require_api_key=section.get('require_api_key', 'false').lower() == 'true',

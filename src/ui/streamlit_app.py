@@ -30,8 +30,9 @@ if str(src_path) not in sys.path:
 try:
     from core import get_generation_engine, get_model_manager, GenerationParams
     from utils import get_device_info, clear_gpu_cache
-except ImportError as e:
-    st.error(f"Import error: {e}")
+except ImportError:
+    logging.getLogger(__name__).exception("Import error occurred while loading application modules")
+    st.error("An internal error occurred while loading application modules. Please contact the administrator.")
     st.error("Please make sure you're running from the project root directory")
     st.stop()
 

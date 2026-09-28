@@ -16,7 +16,7 @@ def main():
             print(f"✅ Number of GPUs: {torch.cuda.device_count()}")
             for i in range(torch.cuda.device_count()):
                 print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
-    except Exception as e:
+    except (ImportError, AttributeError, RuntimeError) as e:
         print(f"❌ PyTorch import failed: {e}")
         return False
     
@@ -24,7 +24,7 @@ def main():
     try:
         import diffusers
         print(f"✅ Diffusers {diffusers.__version__} imported successfully")
-    except Exception as e:
+    except (ImportError, AttributeError) as e:
         print(f"❌ Diffusers import failed: {e}")
         return False
     
@@ -32,7 +32,7 @@ def main():
     try:
         import transformers
         print(f"✅ Transformers {transformers.__version__} imported successfully")
-    except Exception as e:
+    except (ImportError, AttributeError) as e:
         print(f"❌ Transformers import failed: {e}")
         return False
     
@@ -40,21 +40,21 @@ def main():
     try:
         import PIL
         print("✅ PIL (Pillow) imported successfully")
-    except Exception as e:
+    except ImportError as e:
         print(f"❌ PIL import failed: {e}")
         return False
     
     try:
         import numpy
         print("✅ NumPy imported successfully")
-    except Exception as e:
+    except ImportError as e:
         print(f"❌ NumPy import failed: {e}")
         return False
     
     try:
         import streamlit
         print("✅ Streamlit imported successfully")
-    except Exception as e:
+    except ImportError as e:
         print(f"❌ Streamlit import failed: {e}")
         return False
     

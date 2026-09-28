@@ -9,6 +9,11 @@ This script demonstrates the exact approach you provided for Qwen-Image generati
 from diffusers import DiffusionPipeline
 import torch
 
+# Image generation configuration constants
+NUM_INFERENCE_STEPS = 50  # number of denoising steps; higher values can improve quality at the cost of speed
+TRUE_CFG_SCALE = 4.0      # classifier-free guidance scale controlling prompt adherence
+RANDOM_SEED = 42          # fixed seed for reproducible generation results
+
 def main():
     """Main function implementing your Qwen-Image example."""
     
@@ -42,7 +47,8 @@ def main():
 
     negative_prompt = " "  # using an empty string if you do not have specific concept to remove
 
-    # Generate with different aspect ratios (from your example)
+    # Generate with different aspect ratios (from your example).
+    # Each tuple is (width, height) in pixels, chosen to keep total pixel count roughly constant (~1328*1328) across ratios for consistent generation quality/performance.
     aspect_ratios = {
         "1:1": (1328, 1328),
         "16:9": (1664, 928),
@@ -62,9 +68,9 @@ def main():
         negative_prompt=negative_prompt,
         width=width,
         height=height,
-        num_inference_steps=50,
-        true_cfg_scale=4.0,
-        generator=torch.Generator(device=device).manual_seed(42)
+        num_inference_steps=NUM_INFERENCE_STEPS,
+        true_cfg_scale=TRUE_CFG_SCALE,
+        generator=torch.Generator(device=device).manual_seed(RANDOM_SEED)
     ).images[0]
 
     # Save image

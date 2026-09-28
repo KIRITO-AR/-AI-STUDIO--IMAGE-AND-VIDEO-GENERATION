@@ -117,6 +117,9 @@ class VideoEditor:
         if speed_factor <= 0:
             raise ValueError("Speed factor must be positive")
         
+        if not frames:
+            return []
+        
         if speed_factor == 1.0:
             return frames
         

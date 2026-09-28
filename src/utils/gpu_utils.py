@@ -129,20 +129,23 @@ class GPUDetector:
                 try:
                     util = pynvml.nvmlDeviceGetUtilizationRates(handle)
                     utilization = float(util.gpu)
-                except Exception:
+                except (pynvml.NVMLError, AttributeError, ValueError) as e:
+                    logger.warning(f"Failed to get utilization for GPU {i}: {e}")
                     utilization = 0.0
                 
                 # Get temperature
                 try:
                     temperature = float(pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU))
-                except Exception:
+                except (pynvml.NVMLError, AttributeError, ValueError) as e:
+                    logger.warning(f"Failed to get temperature for GPU {i}: {e}")
                     temperature = None
                 
                 # Get driver version
                 try:
                     driver_bytes = pynvml.nvmlSystemGetDriverVersion()
                     driver_version = driver_bytes.decode('utf-8') if isinstance(driver_bytes, bytes) else str(driver_bytes)
-                except Exception:
+                except (pynvml.NVMLError, AttributeError, ValueError) as e:
+                    logger.warning(f"Failed to get driver version for GPU {i}: {e}")
                     driver_version = None
                 
                 gpu_info = GPUInfo(
@@ -159,9 +162,17 @@ class GPUDetector:
                 gpus.append(gpu_info)
                 logger.info(f"Detected NVIDIA GPU {i}: {name} ({memory_total}MB)")
             
-        except Exception as e:
-            logger.error(f"Failed to detect NVIDIA GPUs: {e}")
+        except (pynvml.NVMLError, OSError) as e:
+            logger.error(f"Failed to detect NVIDIA GPUs: {e}", exc_info=True)
             return self._detect_nvidia_gpus_fallback()
+        except Exception:
+            logger.exception("Unexpected error during NVIDIA GPU detection")
+            raise
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except Exception as e:
+                logger.warning(f"Failed to shutdown pynvml: {e}")
         
         return gpus
     

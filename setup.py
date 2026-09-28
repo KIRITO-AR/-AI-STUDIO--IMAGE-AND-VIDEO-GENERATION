@@ -55,6 +55,13 @@ def install_dependencies():
         print(f"❌ Failed to install dependencies: {e}")
         print(f"Error output: {e.stderr}")
         return False
+    except FileNotFoundError as e:
+        print(f"❌ Failed to install dependencies: {e}")
+        print("Could not find the Python executable or pip module")
+        return False
+    except OSError as e:
+        print(f"❌ Failed to install dependencies due to an OS error: {e}")
+        return False
 
 def create_directories():
     """Create necessary directories."""
@@ -93,9 +100,12 @@ def test_basic_functionality():
         print("✅ Basic functionality test passed")
         return True
         
-    except Exception as e:
+    except (ImportError, ModuleNotFoundError, AttributeError, RuntimeError) as e:
         print(f"❌ Basic functionality test failed: {e}")
         return False
+    except Exception:
+        print("❌ Basic functionality test failed with an unexpected error")
+        raise
 
 def show_next_steps():
     """Show next steps to the user."""

@@ -76,10 +76,11 @@ def test_flux_model():
             for rec in flux_compat.get('recommendations', []):
                 logger.info(f"  - {rec}")
     
-    except Exception as e:
+    except Exception:
         logger.error(f"Test failed: {e}")
         import traceback
         traceback.print_exc()
+        raise
 
 if __name__ == "__main__":
     test_flux_model()

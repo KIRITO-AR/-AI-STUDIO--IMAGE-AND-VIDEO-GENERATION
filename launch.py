@@ -25,7 +25,13 @@ def launch_streamlit():
     print("🚀 Launching Streamlit interface...")
     print("Open your browser to: http://localhost:8501")
     
-    subprocess.run(cmd)
+    process = subprocess.Popen(cmd)
+    try:
+        process.wait()
+    except Exception:
+        process.terminate()
+        process.wait()
+        raise
 
 def launch_desktop():
     """Launch the desktop interface (placeholder)."""

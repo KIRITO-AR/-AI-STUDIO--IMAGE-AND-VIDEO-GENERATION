@@ -6,6 +6,13 @@ This script demonstrates basic image generation.
 import sys
 from pathlib import Path
 
+# Default generation parameters
+DEFAULT_IMAGE_WIDTH = 512
+DEFAULT_IMAGE_HEIGHT = 512
+DEFAULT_NUM_INFERENCE_STEPS = 20
+DEFAULT_GUIDANCE_SCALE = 7.5
+DEFAULT_NUM_IMAGES_PER_PROMPT = 1
+
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
@@ -32,11 +39,11 @@ def main():
     params = GenerationParams(
         prompt="a beautiful sunset over mountains, digital art, highly detailed",
         negative_prompt="blurry, low quality",
-        width=512,
-        height=512,
-        num_inference_steps=20,
-        guidance_scale=7.5,
-        num_images_per_prompt=1
+        width=DEFAULT_IMAGE_WIDTH,
+        height=DEFAULT_IMAGE_HEIGHT,
+        num_inference_steps=DEFAULT_NUM_INFERENCE_STEPS,
+        guidance_scale=DEFAULT_GUIDANCE_SCALE,
+        num_images_per_prompt=DEFAULT_NUM_IMAGES_PER_PROMPT
     )
     
     print(f"Generating image with prompt: '{params.prompt}'")

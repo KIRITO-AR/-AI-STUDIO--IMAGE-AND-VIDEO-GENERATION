@@ -19,8 +19,8 @@ def launch_streamlit():
     
     streamlit_app = script_dir / "src" / "ui" / "streamlit_app.py"
     
-    # Use py command for Windows Python environment
-    cmd = ["py", "-m", "streamlit", "run", str(streamlit_app)]
+    # Use the current Python interpreter for cross-platform compatibility
+    cmd = [sys.executable, "-m", "streamlit", "run", str(streamlit_app)]
     
     print("🚀 Launching Streamlit interface...")
     print("Open your browser to: http://localhost:8501")

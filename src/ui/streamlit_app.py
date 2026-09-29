@@ -31,7 +31,8 @@ try:
     from core import get_generation_engine, get_model_manager, GenerationParams
     from utils import get_device_info, clear_gpu_cache
 except ImportError as e:
-    st.error(f"Import error: {e}")
+    logging.getLogger(__name__).error("Import error while loading core/utils modules: %s", e)
+    st.error("Import error: required modules could not be loaded.")
     st.error("Please make sure you're running from the project root directory")
     st.stop()
 

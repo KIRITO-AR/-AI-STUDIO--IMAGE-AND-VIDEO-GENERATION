@@ -159,9 +159,17 @@ class GPUDetector:
                 gpus.append(gpu_info)
                 logger.info(f"Detected NVIDIA GPU {i}: {name} ({memory_total}MB)")
             
-        except Exception as e:
-            logger.error(f"Failed to detect NVIDIA GPUs: {e}")
+        except pynvml.NVMLError as e:
+            logger.error(f"NVML error while detecting NVIDIA GPUs: {e}", exc_info=True)
             return self._detect_nvidia_gpus_fallback()
+        except Exception as e:
+            logger.exception(f"Unexpected error while detecting NVIDIA GPUs: {e}")
+            raise
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except Exception as e:
+                logger.warning(f"Failed to shutdown pynvml: {e}")
         
         return gpus
     

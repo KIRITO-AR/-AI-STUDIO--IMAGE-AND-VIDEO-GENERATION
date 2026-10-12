@@ -62,7 +62,7 @@ def generate_basic_video():
             result, "outputs/examples/generated_video.mp4"
         )
         print(f"🎬 Video saved to: {video_path}")
-    except (OSError, IOError, RuntimeError, ValueError) as e:
+    except Exception as e:
         print(f"⚠️  Failed to save video file: {e}")
     
     print(f"✅ Video generation completed in {result.generation_time:.2f}s")
@@ -120,7 +120,7 @@ def generate_modelscope_video():
             result, "outputs/examples/modelscope_video.mp4"
         )
         print(f"🎬 Video saved to: {video_path}")
-    except (OSError, IOError, RuntimeError, ValueError) as e:
+    except Exception as e:
         print(f"⚠️  Failed to save video file: {e}")
     
     print(f"✅ Video generation completed in {result.generation_time:.2f}s")
@@ -178,7 +178,7 @@ def generate_zeroscope_video():
             result, "outputs/examples/zeroscope_video.mp4"
         )
         print(f"🎬 Video saved to: {video_path}")
-    except (OSError, IOError, RuntimeError, ValueError) as e:
+    except Exception as e:
         print(f"⚠️  Failed to save video file: {e}")
     
     print(f"✅ Video generation completed in {result.generation_time:.2f}s")

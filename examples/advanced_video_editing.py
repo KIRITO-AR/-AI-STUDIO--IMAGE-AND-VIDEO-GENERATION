@@ -11,6 +11,35 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from core import get_generation_engine, get_model_manager, GenerationParams
 
+# Safe upper bounds for video generation parameters
+MAX_WIDTH = 1920
+MAX_HEIGHT = 1080
+MAX_INFERENCE_STEPS = 150
+MAX_NUM_FRAMES = 300
+MAX_GUIDANCE_SCALE = 20.0
+MAX_FPS = 60
+MIN_WIDTH = 64
+MIN_HEIGHT = 64
+MIN_INFERENCE_STEPS = 1
+MIN_NUM_FRAMES = 1
+MIN_GUIDANCE_SCALE = 0.0
+MIN_FPS = 1
+
+def validate_generation_params(width, height, num_inference_steps, guidance_scale, num_frames, fps):
+    """Validate and clamp video generation parameters to safe bounds."""
+    if not (MIN_WIDTH <= width <= MAX_WIDTH):
+        raise ValueError(f"width must be between {MIN_WIDTH} and {MAX_WIDTH}, got {width}")
+    if not (MIN_HEIGHT <= height <= MAX_HEIGHT):
+        raise ValueError(f"height must be between {MIN_HEIGHT} and {MAX_HEIGHT}, got {height}")
+    if not (MIN_INFERENCE_STEPS <= num_inference_steps <= MAX_INFERENCE_STEPS):
+        raise ValueError(f"num_inference_steps must be between {MIN_INFERENCE_STEPS} and {MAX_INFERENCE_STEPS}, got {num_inference_steps}")
+    if not (MIN_GUIDANCE_SCALE <= guidance_scale <= MAX_GUIDANCE_SCALE):
+        raise ValueError(f"guidance_scale must be between {MIN_GUIDANCE_SCALE} and {MAX_GUIDANCE_SCALE}, got {guidance_scale}")
+    if not (MIN_NUM_FRAMES <= num_frames <= MAX_NUM_FRAMES):
+        raise ValueError(f"num_frames must be between {MIN_NUM_FRAMES} and {MAX_NUM_FRAMES}, got {num_frames}")
+    if not (MIN_FPS <= fps <= MAX_FPS):
+        raise ValueError(f"fps must be between {MIN_FPS} and {MAX_FPS}, got {fps}")
+
 def generate_and_edit_video():
     """Generate a video and apply various editing operations."""
     print("🎬 AI Generation Studio - Advanced Video Editing Example")
@@ -28,19 +57,31 @@ def generate_and_edit_video():
         return
     
     print("✅ Video model loaded successfully!")
-    
+
     # Create generation parameters
+    width = 512
+    height = 512
+    num_inference_steps = 20
+    guidance_scale = 7.5
+    num_frames = 24
+    fps = 8
+
+    validate_generation_params(
+        width=width, height=height, num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale, num_frames=num_frames, fps=fps
+    )
+
     params = GenerationParams(
         prompt="a red sports car driving through a futuristic city, cinematic, highly detailed",
         negative_prompt="blurry, low quality, static",
-        width=512,
-        height=512,
-        num_inference_steps=20,
-        guidance_scale=7.5,
-        num_frames=24,
-        fps=8
+        width=width,
+        height=height,
+        num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale,
+        num_frames=num_frames,
+        fps=fps
     )
-    
+
     print(f"Generating video with prompt: '{params.prompt}'")
     
     # Generate video
